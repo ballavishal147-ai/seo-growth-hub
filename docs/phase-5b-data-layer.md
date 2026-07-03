@@ -1261,7 +1261,7 @@ Application code never consumes vendor SDK types directly.
 
 Boundary modules expose typed interfaces only.
 
-#### 8.7.2 Typed Contracts
+#### 8.7.3 Non-Blocking Failures
 
 External integrations fail gracefully.
 
