@@ -1251,17 +1251,17 @@ Routing failures:
 
 Every external integration follows three architectural rules.
 
-### 1. Single Call Site
+#### 8.7.1 Single Call Site
 
 Each integration has exactly one boundary module.
 
-### 2. Typed Contracts
+#### 8.7.2 Typed Contracts
 
 Application code never consumes vendor SDK types directly.
 
 Boundary modules expose typed interfaces only.
 
-### 3. Non-Blocking Failures
+#### 8.7.2 Typed Contracts
 
 External integrations fail gracefully.
 
