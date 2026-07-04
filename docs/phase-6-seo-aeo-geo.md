@@ -954,7 +954,875 @@ BUILD FAILS   Sitemap index + child sitemaps deployed to CDN,
 
 ---
 
+
 **End of Section 6 — Sitemap Architecture.**
 
 Ready to proceed to the next section (Internal Linking Implementation Architecture) on your instruction.
+
+
+Sections 1–6 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 7.
+
+---
+
+# 7. Internal Linking Architecture
+
+### 7.1 Internal Linking Philosophy
+
+Internal linking is treated as the **technical realization of relationships already declared as typed data**, not an independent editorial or presentational layer laid on top of finished pages. Every internal link this architecture specifies traces to one of two already-frozen sources: (1) an explicit typed reference field on a Phase 5B §3 domain model (e.g., `Service.relatedCaseStudyIds`), or (2) a structural relationship already defined in the Information Architecture (IA Phase 2 §13, §15) — the Internal Linking Blueprint and Content Relationships map. This section's role is to specify **how** those already-approved relationships become actual rendered `<a>` elements, following the exact discipline Section 3.11 established for structured-data entity linking: no internal link may assert a relationship the underlying content model doesn't itself contain, and conversely, no typed relationship field may go unexpressed as a visible link without a documented reason.
+
+**Consistency with the Structured-Data Graph:** Because Section 3.11 already established that JSON-LD relationships trace to the same typed reference fields, internal linking and structured data are two renderings of one underlying relationship graph — a human clicking a "Related Case Studies" link and a crawler parsing a `Service` node's implicit case-study association (Section 3.6's scope note) are being told the same fact through two different channels. This section never introduces a link that structured data doesn't know about, or vice versa, beyond the specific, named scope exceptions already documented in Section 3.6.
+
+**Governing Test:** Consistent with Section 1.1's "does this make genuinely present content more legible, or manufacture content solely for machines" principle, every link specified in this section exists because a human user benefits from it (per the UX Blueprint's journeys, Phase 3) — link placement is never justified by SEO value alone, divorced from genuine navigational or informational usefulness to the visitor reading that page.
+
+### 7.2 Link Equity Distribution
+
+**Governing Principle:** Link equity distribution is not manipulated through artificial means (hidden links, disproportionate footer link-stuffing, or link-equity-optimized-but-user-hostile placement) — it is an emergent property of the Page Hierarchy (Phase 5B-adjacent IA Phase 2 §5) and the Internal Linking Blueprint's structural rules (IA §13), which this section implements faithfully rather than re-optimizes around.
+
+**Structural Equity Flow, By Hierarchy Level:**
+- **Level 0 (Homepage):** Receives the highest inbound link count by construction — every Level 1 hub is one click from it, and it is the universal `Organization`/`WebSite` schema anchor (Sections 3.3–3.4). It distributes equity outward to all Level 1 hubs via the persistent header navigation (Section 7.6).
+- **Level 1 (Category Hubs — Services, Industries, Locations, Blog, Case Studies, About):** Receive equity from the Homepage and from every Level 2 child page's "back to hub" contextual link (Section 7.5), concentrating equity at the hub before it fans back out — this is the direct link-equity expression of the Hub & Spoke pattern (Section 7.3).
+- **Level 2 (Detail Pages):** Receive equity from their parent hub, from sibling cross-references (Section 7.4), and from any Level 3 conversion page's upstream context (rare, since conversion pages are typically link *targets*, not link *sources*, per Section 7.5).
+- **Level 3 (Conversion/Utility Pages):** Deliberately **equity sinks, not equity distributors** — `/free-audit`, `/consultation`, `/contact` receive substantial inbound linking (every CTA Band, per Design System Phase 4 §26.4, links here) but themselves link outward minimally, consistent with UX Phase 3 §10's framing of these as action-focused, low-distraction destinations rather than further navigational hubs.
+
+**No Artificial Equity Sculpting:** This architecture does not employ `rel="nofollow"` on internal links as an equity-sculpting technique (a historically common but since-devalued practice) — every internal link in this system passes full link equity by default, consistent with Section 5.3's earlier ruling that `follow` is the universal, non-conditional directive; equity distribution is governed entirely through *structural* decisions (which pages link to which, per Sections 7.3–7.4), never through selective `nofollow` application on individual links.
+
+### 7.3 Hub & Spoke Strategy
+
+**Direct Implementation of IA Phase 2 §13's Core Principles:** This subsection specifies the mechanical link-rendering rules that satisfy the two already-frozen linking principles — "hub-to-spoke linking" and "spoke-to-hub linking":
+
+| Direction | Rule | Source Data | Rendered Location |
+|---|---|---|---|
+| **Hub → Spoke** | Every Service/Industry pillar page links to all of its directly subordinate content | Service hub links to every `Service` entity via `listPublished()` (Phase 5B §6.1); Industry hub links to every `Industry` entity identically | Hub page's card-grid body (Design System Phase 4 §13, Card System) |
+| **Spoke → Hub** | Every Service/Industry detail page links back to its parent hub | The route pattern itself (IA §4 — `/services/[service]` implies `/services` as parent) — no additional relationship field needed, since hub membership is structural, not a modeled relationship | Breadcrumb trail (deferred to a future section per your instruction) **and** an explicit in-content link, since breadcrumbs alone are not sufficient — Section 7.5 governs the in-content instance |
+| **Pillar → Cluster (Blog)** | Service/Industry pillar pages link to relevant Blog cluster content | `Service`/`Industry` pages surface Blog Posts where `BlogPost.relatedServiceId` (Phase 5B §3.4) matches the current Service — a reverse lookup, not a field stored on `Service` itself | Dedicated "Related Reading" section, positioned per UX Phase 3 §6's Service Page Journey scroll order (after Proof, before FAQ) |
+| **Cluster → Pillar (Blog)** | Every Blog Post links back to its associated Service pillar | `BlogPost.relatedServiceId` (Phase 5B §3.4) — direct forward reference | In-content contextual link (Section 7.5) and/or end-of-post CTA context, per UX Phase 3 §7's Blog Reading Journey |
+
+**Why Reverse Lookups Are Architecturally Sound, Not a Workaround:** The Pillar → Cluster relationship above is resolved by querying Blog Posts *whose* `relatedServiceId` matches the current Service, rather than maintaining a duplicate `relatedBlogPostIds` array on `Service` itself. This is a deliberate modeling choice consistent with Phase 5B's Data Architecture Philosophy (§1, Principle 3 — "Single Source of Truth Per Entity"): storing the relationship once, on the Blog Post (the more naturally "owning" side of a one-to-many relationship), and resolving it bidirectionally via query rather than data duplication, avoids the exact synchronization-drift risk that duplicating the reference in both directions would introduce.
+
+### 7.4 Cross-Entity Relationships
+
+Beyond the strict Hub & Spoke pattern (Section 7.3), the following cross-entity links are rendered, each traceable to a specific Phase 5B §3 typed reference field — this table is the internal-linking counterpart to Section 3's structured-data field-mapping tables, applied to visible `<a>` elements rather than JSON-LD properties:
+
+| Source Entity | Target Entity | Source Field (Phase 5B §3) | Rendered As |
+|---|---|---|---|
+| Service | Case Study | `relatedCaseStudyIds` | "Proof" card-grid section (UX Phase 3 §6 Scroll Journey, step 5) |
+| Service | Industry | `relatedIndustryIds` | "Who This Is For" or cross-sell section |
+| Industry | Service | `recommendedServiceIds` | Primary service-recommendation card grid (UX Phase 3 §27.3's core purpose for this field) |
+| Industry | Case Study | `relatedCaseStudyIds` | Industry-matched proof section |
+| Case Study | Industry | `industryId` | Contextual tag/link near hero (per UX Phase 3 §8 Case Study Journey's "client/industry snapshot") |
+| Case Study | Service | `serviceId` | Contextual tag/link near hero |
+| Case Study | Testimonial | `testimonialId` | Embedded testimonial block (not a separate navigable link — Testimonials are not independently routable per Phase 5B §3.10's note) |
+| Blog Post | Blog Post (self-referential) | `relatedPostIds` | "Related Posts" grid (UX Phase 3 §7 Scroll Journey, step 8) |
+| Location | Location (self-referential) | `neighboringCityIds` | "Nearby Locations" section (IA §11.2's explicit rationale) |
+| Location | Case Study | `relatedCaseStudyId` | Local proof section, where present |
+| Author | Team Member | `linkedTeamMemberId` | Byline "About the Author" link, where a staff link exists |
+| FAQ Item | (host page only) | `associatedPage(s)` | Not an independent link target — governs *which pages embed* the FAQ item (Section 7.5's scoped-embed logic), not a link the FAQ item itself renders |
+
+**Completeness Discipline:** Every relationship field cataloged across Phase 5B §3.1–3.11 that has a plausible, user-meaningful link rendering appears in this table. Fields intentionally excluded (e.g., `Service.targetKeywords`, internal-only per Phase 5B §3.1) are excluded because they have no corresponding link-worthy relationship, not because of an oversight — mirroring the same rejection-criterion discipline already applied to structured-data schema selection in Section 3.2.
+
+### 7.5 Contextual Linking Rules
+
+**In-Content vs. Structural Links — A Deliberate Distinction:** Sections 7.3–7.4 specify *structural* links (rendered in dedicated sections — card grids, related-content blocks) that exist regardless of surrounding prose. **Contextual links** are those embedded *within* `RichContent` body text itself (Phase 5B §4.5) — e.g., a Blog Post's prose mentioning "our approach to local SEO" with "local SEO" hyperlinked to the corresponding Service page.
+
+**Governance Rule for Contextual Links:** A contextual, in-prose link is only ever inserted where the referenced entity is *already* a valid typed relationship for that content item (per Section 7.4's table) or where it points to a Level 1 hub (Services, Industries, Blog, Case Studies) that requires no relationship modeling at all, since hub pages are universally linkable navigational anchors. This prevents contextual linking from becoming an unconstrained, editorially-arbitrary practice disconnected from the modeled relationship graph — an editor cannot casually hyperlink an arbitrary phrase in a Blog Post's body to an unrelated Service page without that relationship first existing as a proper `relatedServiceId` reference (Phase 5B §3.4), preserving Section 7.1's "no link may assert an unmodeled relationship" discipline even at the prose level.
+
+**Density Governance:** Consistent with UX Phase 3 §3's Information Consumption Strategy chunking rules, contextual links within body content are capped at a reasonable density (no more than one contextual link per ~150–200 words of `RichContent`) to avoid the link-stuffing anti-pattern this architecture's "no artificial equity sculpting" principle (Section 7.2) already rejects — link density is a content-quality concern here, not merely an aesthetic one.
+
+**FAQ Scoped-Embed Linking (extends Section 3.9's two-context model):** Where a `FAQItem` is embedded on a Service/Industry/Location page (Phase 5B §3.8's `associatedPage(s)`), its `answer` text may contain a contextual link back to that same host page's other sections or to a directly related entity — but never to an unrelated page, applying the identical governance rule above.
+
+### 7.6 Navigation Linking
+
+**Direct Implementation of the Navigation Domain Model (Phase 5B §3.12):** Header navigation links are not hand-coded per page but rendered entirely from the singleton `Navigation` entity's `primaryItems` structure — meaning the internal-linking architecture for header navigation is, in practice, *already fully specified* by the domain model itself (Phase 5B §3.12's `NavItem` shape, mega-menu vs. dropdown `type` discriminator).
+
+**Universal Reach:** Because `Navigation` is fetched on every page render via the singleton-caching pattern (Phase 5B §6.5), every page on the site carries an identical, complete set of links to every Level 1 hub — satisfying IA Phase 2 §13's "no page more than 3 clicks from homepage" rule for all hub-level content by construction, not through per-page link curation.
+
+**Mega-Menu Link Equity Consideration:** The Services mega-menu (UX Phase 3 §15, Design System Phase 4 §26.2) renders links to all 8–11 individual Service pages from every single page on the site — this is architecturally acceptable and consistent with Section 7.2's no-artificial-sculpting stance precisely *because* it reflects a genuine, user-beneficial navigational structure already approved in the UX Blueprint, not a link-equity-optimization tactic dressed as navigation.
+
+### 7.7 Footer Linking
+
+**Direct Implementation of the Footer Domain Model (Phase 5B §3.13):** Identical governing logic to Section 7.6 — footer links render from the singleton `Footer` entity's `columns` structure, which IA Phase 2 §3 already specified mirrors the primary navigation's Services/Industries categories while additionally surfacing secondary-priority pages (FAQ, Testimonials) not present in the header.
+
+**Footer's Distinct Equity Role:** Where the header navigation (Section 7.6) distributes equity primarily to Level 1 hubs, the Footer's inclusion of `/faq`, `/testimonials`, and legal pages (Phase 5B §3.13's `legalLinks`) gives these Level 3/utility pages a baseline of site-wide inbound linking they would not otherwise receive from the Hub & Spoke structure (Section 7.3) alone — satisfying IA Phase 2 §13's orphan-prevention rule (minimum two inbound links per page) for exactly this category of page that sits outside the primary hub hierarchy.
+
+**No Footer Link-Stuffing:** Consistent with Section 7.2, the Footer's four-column structure (Phase 5B §3.13, mirroring IA §3) is fixed and finite — it is not expanded opportunistically to include every possible internal link for equity-distribution purposes; its scope is exactly the set of links IA Phase 2 §3 already approved, no more.
+
+### 7.8 Related Content Strategy
+
+**Consolidation of Prior Sections:** "Related content" as a UX pattern (UX Phase 3 §26.5's Card component, used for Related Posts, Related Case Studies, etc.) is the rendering surface for the relationship fields already cataloged in Section 7.4 — this subsection specifies the **selection and ordering logic** for those related-content blocks, which Section 7.4 did not yet address.
+
+**Selection Logic:**
+- Where a relationship field is a bounded array (`relatedCaseStudyIds`, `relatedPostIds`, `neighboringCityIds` — all capped per their Phase 5B §3 validation rules, e.g., Blog Post's `relatedPostIds` "Max 4"), the related-content block renders the editor-curated set in the array's stored order, respecting explicit editorial curation rather than an algorithmic re-ranking.
+- Where a relationship is resolved via reverse lookup (Section 7.3's Pillar↔Cluster pattern), ordering defaults to `publishedAt` descending (most recent first) — the same freshness-oriented default already implicitly used elsewhere in the system (e.g., Blog index ordering, Phase 5A §3's ISR revalidation rationale for the Blog index).
+
+**Graceful Degradation (restates Phase 5B §5.4, applied to rendering):** Per the `publishedRelationGuard` output-validation pattern already established, a related-content block whose resolved set is empty (all references archived/unpublished, or genuinely none authored) renders as an *absent section*, not an empty-state placeholder — distinct from the Empty State System (Design System Phase 4 §21), which governs user-initiated empty results (search, filters), not passive content-relationship gaps. A missing "Related Case Studies" section is simply not rendered; it does not need to explain its own absence to the reader.
+
+### 7.9 Anchor Text Governance
+
+**Principle:** Anchor text is **descriptive and entity-specific by default**, never generic ("click here," "read more," "learn more") used in isolation — consistent with the Accessibility Rules already frozen in Design System Phase 4 §26 (screen-reader users navigating by link list depend on distinguishable, meaningful link text) and directly serving the same semantic-clarity goal Section 1.2 established for crawlability.
+
+**Structural vs. Contextual Anchor Text:**
+- **Structural links** (Card components, Section 7.3–7.4): Anchor text is the entity's own `name`/`title` field (e.g., a Case Study card's link text is the Case Study's `title`, Phase 5B §3.9) — this is not independently authored anchor-text copy; it is the same title already validated and displayed as the card's own heading, ensuring anchor text and destination-page identity are always in perfect correspondence.
+- **Contextual links** (Section 7.5, in-prose): Anchor text is a natural-language phrase from the surrounding sentence that accurately describes the destination — never keyword-stuffed exact-match phrasing inserted purely for ranking purposes, which would violate both the "human-first" principle (Section 1.1) and current search-engine guidance treating manipulative anchor-text patterns as a negative signal rather than a positive one.
+
+**"Learn More" Exception:** Where a card or section already carries a strong heading (the entity's `name`/`title`, per the structural-link rule above), a secondary, short "Learn More" or "Read Case Study →" style micro-link is permitted *alongside* — not instead of — the primary title-based link, since the heading has already established context and the secondary link is understood as a continuation of that same link target, not a standalone ambiguous link; this mirrors the Card System's already-approved "entire card clickable, title present" pattern (Design System Phase 4 §13).
+
+### 7.10 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11, 3.13, 4.9, 5.8, and 6.9:
+
+1. **Orphan Page Sweep (direct implementation of IA Phase 2 §13's minimum-two-inbound-links rule):** Build-time validation constructs the full internal-link graph (every rendered link across Sections 7.3–7.8) and confirms every `PUBLISHED`, non-`noIndex` page has at least two inbound internal links — a page falling below this threshold fails the build, operationalizing a rule that was previously a stated principle (IA §13) into an enforced invariant.
+2. **Relationship-to-Link Correspondence Check:** For every typed relationship field cataloged in Section 7.4's table, build-time validation confirms a corresponding rendered link actually exists on the expected page — catching a scenario where a `Service.relatedCaseStudyIds` reference is populated in content but the rendering layer (a future Phase 7 concern) fails to surface it, which would create the exact drift between "modeled relationship" and "visible link" that Section 7.1 exists to prevent.
+3. **Contextual Link Relationship-Validity Check:** Extending Phase 5B §5's validation-layer pattern, any contextual link embedded within a `RichContentBlock` (Section 7.5) is checked at build time to confirm its target either (a) corresponds to an existing typed relationship field value for that content item, or (b) points to a Level 1 hub page — a contextual link failing both conditions fails the build, enforcing Section 7.5's governance rule mechanically rather than relying on editorial discipline alone.
+4. **Anchor Text Non-Genericness Check:** A lightweight build-time lint flags (as a warning, not a build failure, given the inherent fuzziness of natural-language evaluation) any contextual link using a denylisted generic anchor phrase ("click here," "read more" in isolation) — a softer validation tier than the hard-failure checks above, consistent with Section 6.9's precedent of using warnings rather than failures for judgment-calibrated (not purely structural) conditions.
+5. **Structured-Data/Internal-Link Parity Check (cross-reference to Section 3.13):** Where Section 3's structured-data mapping tables (§3.5–3.10) and this section's Section 7.4 table both describe the same relationship field, build-time validation confirms both channels render consistently — neither asserting a relationship the other omits, beyond the specific, already-documented scope exceptions (Section 3.6's Service↔CaseStudy note).
+
+### 7.11 Internal Linking Generation Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, and robots resolution (Sections
+2.12, 3.12, 4.10, 5.9) — memoized, zero additional fetch;
+Content Service's relationship resolution (Phase 5B §6.2–6.3)
+already produced the resolved related-entity arrays this
+section's rendering consumes directly
+        │
+        ▼
+Structural links resolved (Section 7.3–7.4):
+  • Hub↔Spoke pairs via route-pattern structure + listPublished()
+  • Cross-entity pairs via already-resolved relationship arrays
+    (Phase 5B §6.3's resolveMany(), already filtered through
+    publishedRelationGuard — no additional filtering needed here)
+        │
+        ▼
+Contextual links resolved (Section 7.5):
+  • RichContentBlock scan for authored in-prose links
+  • Validated against Section 7.5's relationship-or-hub rule
+    at build time (Section 7.10, check 3)
+        │
+        ▼
+Navigation/Footer links resolved (Section 7.6–7.7):
+  • Singleton Navigation/Footer entities rendered identically
+    on every page — no per-page computation needed
+        │
+        ▼
+Anchor text assigned per Section 7.9's structural-vs-contextual rule
+        │
+        ▼
+Full page assembled with all link categories present
+        │
+        ▼
+Build-time validation suite executed (Section 7.10)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Page deployed with complete internal-link graph,
+(orphan page,  sharing the identical cache/revalidation lifecycle
+missing         already established for content, metadata, structured
+relationship    data, canonical, and robots resolution (Sections
+link, or        2.12/3.12/4.10/5.9) — no independent linking-layer
+invalid         cache or regeneration cycle exists
+contextual
+link target)
+```
+
+**Key Property, Consistent with Sections 2.12/3.12/4.10/5.9/6.10:** Internal linking is not a separate generation pass with its own timing — it is resolved from the exact same memoized Content Service call, using relationship data already fetched and validated for structured-data purposes (Section 3), and rendered within the same build/ISR cycle as every other page element. A page's links, its metadata, its structured data, and its sitemap presence are all facets of one coherent generation event, never independently computed or independently stale relative to one another.
+
+---
+
+**End of Section 7 — Internal Linking Architecture.**
+
+Ready to proceed to the next section (Breadcrumb Implementation Architecture) on your instruction.
+
+
+Sections 1–7 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 8.
+
+---
+
+# 8. Breadcrumb Architecture
+
+### 8.1 Breadcrumb Philosophy
+
+Breadcrumbs are treated as a **single trail with three simultaneous representations** — visible UI component, JSON-LD structured data, and (indirectly) an internal-linking signal — never as three independently authored artifacts that happen to describe the same thing. This is the direct continuation of the discipline already established in Section 3.8 (which deferred its own detailed specification to this section) and Section 7.1's governing rule that no link may assert a relationship the underlying model doesn't contain: a breadcrumb trail is not new data, and this section introduces no new content field — it is a **derivation** from the Page Hierarchy already frozen in IA Phase 2 §5 and the route-pattern structure already frozen in IA Phase 2 §4.
+
+**Single Computation, Multiple Renderings:** Exactly one function computes a page's breadcrumb trail; that single computed trail feeds the visible Breadcrumb component (Design System Phase 4 §26.10), the `BreadcrumbList` JSON-LD node (Section 3.8), and is available as an input to the Orphan Page Sweep and Relationship-to-Link Correspondence checks already established in Section 7.10. This section specifies that computation, closing the loop Section 3.8 explicitly left open ("full architecture... in Section [8]").
+
+**Inheritance, Not Reinvention:** Every rule in Sections 8.2–8.3 below restates and formalizes decisions already approved in IA Phase 2 §14 and UX Phase 3 §24 — this section does not revisit *whether* breadcrumbs appear on a given page type (already decided), only *how* the trail is computed, validated, and kept in permanent sync with its structured-data twin.
+
+### 8.2 Hierarchy Rules
+
+**Source of Truth:** The breadcrumb trail for any given page is derived from the **Page Hierarchy levels** already defined in IA Phase 2 §5 (Level 0 Homepage → Level 1 Category Hubs → Level 2 Detail Pages → Level 3 Supporting/Utility Pages), combined with the specific route-pattern parent-child relationships already frozen in IA Phase 2 §4.
+
+**Rule 1 — Homepage Is Implied, Never an Explicit Trail Segment:** Consistent with the `BreadcrumbList` schema convention already noted in Section 3.8 and UX Phase 3 §24's decision to omit breadcrumbs from the Homepage entirely, no trail — on any page — includes an explicit "Home" segment as a numbered `ListItem`; the trail begins at the current page's Level 1 ancestor.
+
+**Rule 2 — Trail Depth Equals Page Hierarchy Depth, Never Deeper:** A Level 2 page's trail is exactly two segments (Level 1 hub → current page); a Level 3 page's trail, where breadcrumbs apply at all (Rule 4 below), is exactly three segments. No trail artificially inserts an intermediate segment that doesn't correspond to an actual Page Hierarchy level — e.g., a Blog Post's trail is Blog Index → Post (not Blog Index → Category → Post), since Phase 5B §3.4 models `categoryId` as a many-to-one classification, not a nested routing level (IA Phase 2 §4 confirms `/blog/[slug]` sits directly beneath `/blog`, not beneath `/blog/category/[category]`).
+
+**Rule 3 — Multi-Parent Entities Resolve to Their Single Structural Route Parent, Not Their Richest Relationship:** Some entities carry multiple plausible "parent" relationships (e.g., a Case Study has both a `serviceId` and an `industryId`, Phase 5B §3.9) — the breadcrumb trail always resolves to the entity's **structural route parent** (`/case-studies` per IA Phase 2 §4's fixed route pattern), never to a contextually-selected relationship parent (e.g., never "Home → Healthcare → Case Study," even though `industryId` links to Healthcare). This is a deliberate constraint: breadcrumbs represent *where the page structurally lives* in the approved sitemap (IA §1), while the richer web of relationships (Service, Industry) is already fully expressed through Related Content linking (Section 7.4/7.8) — conflating the two would make the breadcrumb trail ambiguous whenever an entity has more than one relationship, which every Case Study does by design.
+
+**Rule 4 — Exclusion List Restated (from IA §14 / UX §24), Not Modified:** Breadcrumbs are omitted entirely on the Homepage and on all Level 3 conversion-focused pages (`/free-audit`, `/consultation`, `/contact`) — this section performs no new exclusion analysis; it inherits IA Phase 2 §14's list and UX Phase 3 §24's stated rationale (breadcrumbs "add unnecessary exit-path friction at the point of conversion") verbatim.
+
+### 8.3 Route-by-Route Breadcrumb Strategy
+
+Applying Section 8.2's rules against the complete sitemap (IA Phase 2 §1):
+
+| Route | Trail | Segment Count |
+|---|---|---|
+| `/services/[service]` | Services → {Service Name} | 2 |
+| `/industries/[industry]` | Industries → {Industry Name} | 2 |
+| `/locations/[city]` | Locations → {City Name} | 2 |
+| `/case-studies/[slug]` | Case Studies → {Case Study Title} | 2 |
+| `/blog/[slug]` | Blog → {Category Name} → {Post Title} | 3 — the one deliberate exception to Rule 2's "no artificial intermediate segment," justified below |
+| `/blog/category/[category]` | Blog → {Category Name} | 2 |
+| `/blog/tag/[tag]` | Blog → {Tag Name} | 2 |
+| `/about/team`, `/about/methodology` | About → {Sub-page Name} | 2 |
+| `/faq` | (no parent hub — top-level utility page) → FAQ | 1, or omitted entirely per the pattern below |
+| `/testimonials` | (top-level utility page) → Testimonials | 1, or omitted |
+| `/legal/[page]` | Legal → {Page Name} | 2 |
+| `/services`, `/industries`, `/locations`, `/blog`, `/case-studies`, `/about` (hub pages themselves) | (no trail — a Level 1 page has no ancestor below Homepage to display) | 0 — breadcrumbs are not rendered on hub pages themselves, only on their Level 2 children, since a hub's own position is already fully conveyed by the primary navigation (Section 7.6) |
+
+**Blog Post's Three-Segment Exception, Explained:** Rule 2 (Section 8.2) generally forbids inserting a non-structural intermediate segment, but Blog Post is deliberately treated differently because — unlike Case Study's dual relationship (Rule 3) — a Blog Post's `categoryId` (Phase 5B §3.4) is a **mandatory, single-valued, taxonomic classification** (not one of several equally-valid relationships), and the Blog Category index (`/blog/category/[category]`) is itself an independently canonical, sitemap-included, structurally real page (Section 4.6, Section 6.4) — meaning "Blog → Category → Post" reflects an actual, approved three-level navigational path through real pages (IA Phase 2 §8.2's taxonomy), not a fabricated hierarchy layer. This is the one case where the richer relationship *is* the structural parent, rather than a competing alternative to it (contrast with Case Study, where neither `serviceId` nor `industryId` is uniquely "the" structural parent — `/case-studies` is).
+
+**Single-Level Utility Pages (`/faq`, `/testimonials`):** These sit directly beneath Homepage in the sitemap (IA Phase 2 §1) with no intervening Level 1 hub of their own. A one-segment trail ("FAQ" alone, with no preceding link) provides no navigational value over the already-omitted Homepage segment (Rule 1) — this architecture therefore **omits breadcrumbs on these two routes**, extending Rule 4's exclusion list by the same underlying logic (a trail that would add nothing beyond what's already conveyed by primary navigation), rather than rendering a degenerate single-segment, non-clickable "breadcrumb" that exists in name only.
+
+### 8.4 Structured Data Alignment
+
+**Restated Constraint (from Section 3.8, now given its full specification):** The `BreadcrumbList` JSON-LD node's `itemListElement` sequence is generated from the **identical trail computation** specified in Sections 8.2–8.3 — there is no separate structured-data-specific breadcrumb logic. The `position` value for each `ListItem` corresponds directly to its index in the trail array (1-indexed, per Schema.org convention), and each `item` URL is the resolved canonical URL (Section 2.6/4.10) of that trail segment's target page — reusing the identical canonical-resolution function already shared across metadata, Open Graph, and sitemap generation (Sections 2.12, 3.12, 4.10, 6.10).
+
+**Enforcement Mechanism for the "Hard Architectural Constraint" (Section 3.8):** Because both the visible Breadcrumb component and the `BreadcrumbList` node consume the same single trail-computation output (Section 8.1's "single computation, multiple renderings" principle), byte-for-byte parity between visible and structured breadcrumbs is not merely validated after the fact (Section 3.13's parity check) — it is **structurally guaranteed by construction**, since there is only one trail array in the system for either representation to draw from. Section 3.13's parity check therefore functions as a regression guard against an implementation bug (e.g., a future Phase 7 component accidentally hardcoding a label rather than consuming the shared trail), not as a check against two independently-computed sources ever legitimately disagreeing.
+
+**Segment Label Source:** Each trail segment's display label (both visible and in JSON-LD's `name` property) is the target entity's own canonical name field — `Service.name`, `Industry.name`, `Location.cityName`, `CaseStudy.title`, `BlogPost.title`, `BlogCategory.name`, `BlogTag.name` (all per Phase 5B §3) — never an independently authored "breadcrumb label" field. This mirrors Section 7.9's Anchor Text Governance rule for structural links exactly: breadcrumb segment text and the entity's own title/name are the same value, guaranteeing perpetual consistency between how an entity is named everywhere else on the site and how it appears in its own breadcrumb trail.
+
+### 8.5 UX Integration
+
+**Restated, Not Re-Decided:** Placement (immediately below header, above hero content), interaction behavior (every segment except the current page is clickable), and mobile truncation behavior (intelligent truncation rather than wrapping or hiding) are already fully specified in UX Phase 3 §24 and given component-level treatment in Design System Phase 4 §26.10 — this section does not restate that specification in full, only confirms that the data this section produces (Sections 8.2–8.4) is exactly and only what those already-approved component behaviors require as input: an ordered array of `{ label, href }` pairs, with the final entry's `href` omitted or treated as non-interactive (representing the current page).
+
+**Accessibility Alignment (cross-reference, not new decision):** The `nav` landmark, `aria-label="breadcrumb"`, and `aria-current="page"` requirements already specified in Design System Phase 4 §26.10 apply directly to the trail structure this section defines — the final trail segment (current page) is the element carrying `aria-current="page"`, which is mechanically determinable from this section's output (it is always the last array element) without requiring any additional data beyond the trail itself.
+
+### 8.6 Dynamic Generation Strategy
+
+**Computation Timing:** Breadcrumb trail computation occurs within the same generation pass already established for every other per-page SEO artifact (Sections 2.12, 3.12, 4.10, 5.9, 6.10, 7.11) — for SSG routes (the overwhelming majority per Phase 5A §3), the trail is computed once at build time from the same memoized Content Service call; for the one `dynamicParams: true` exception (Location pages, Phase 5A §3.2), the trail is computed on-demand identically to every other per-page artifact for that route category, and persists in cache thereafter.
+
+**Resolution Steps (generalized across all route types in Section 8.3):**
+1. Determine the current entity's Page Hierarchy level and structural route parent, per the fixed route-pattern-to-parent mapping already frozen in IA Phase 2 §4 (a static lookup table, not a per-request computation — e.g., "`/services/[service]` → parent is `/services`" never varies by which specific Service is being rendered).
+2. Where the structural parent itself requires a resolved display label from entity data (e.g., Blog Post's Category segment, per Section 8.3's three-segment exception), resolve that label via the entity's own already-fetched relationship data (`BlogPost.categoryId` → `BlogCategory.name`) — reusing the Content Service's already-resolved relationship output (Phase 5B §6.2–6.3), not a separate fetch.
+3. Assemble the ordered trail array, terminating in the current entity's own name/title (Section 8.4) with no outbound `href`.
+4. Pass the identical array to both the visible Breadcrumb component (Section 8.5) and the `BreadcrumbList` builder (Section 8.4) — no divergent processing between the two consumers.
+
+**No Independent Caching Layer:** Because breadcrumb computation depends only on already-fetched, already-memoized data (Phase 5B §6.4's `cache()` deduplication) and a static route-to-parent lookup table, it introduces no additional fetch, no additional cache tag, and no additional revalidation trigger beyond what the page's own content generation already requires — it shares the exact cache/revalidation lifecycle already established for every other SEO artifact in this document.
+
+### 8.7 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11, 3.13, 4.9, 5.8, 6.9, and 7.10:
+
+1. **Trail Depth Conformance Check:** Build-time validation confirms every page's computed trail depth matches its expected depth per Section 8.3's route-by-route table (e.g., every `/services/[service]` page produces exactly a 2-segment trail) — catching any implementation drift where a future content-model change (e.g., a new intermediate entity type) silently alters trail depth without a corresponding update to this section's rules.
+2. **Structural Parent Resolvability Check:** For every page's trail, build-time validation confirms every non-terminal segment's `href` resolves to an actually-existing, `PUBLISHED` page (the same referential-integrity discipline already applied to content relationships generally, Phase 5B §5.5, and to internal links specifically, Section 7.10) — a breadcrumb pointing to a hub page that doesn't exist or has been unpublished is a build failure, not a silently broken link.
+3. **Visible/Structured-Data Parity Check (restated from Section 3.13, now formally owned by this section):** Confirms the `BreadcrumbList` JSON-LD sequence and the visible Breadcrumb component's rendered output are identical, segment-for-segment — as established in Section 8.4, this functions as a regression guard against the single-source-of-truth principle being violated in a future implementation, not a check against legitimate independent variation.
+4. **Exclusion List Conformance Check:** Confirms breadcrumbs are absent (not merely empty) on every page in Section 8.2 Rule 4's and Section 8.3's exclusion set (Homepage, conversion pages, `/faq`, `/testimonials`, all Level 1 hub pages) — and, conversely, present on every page not in that set, closing the loop so no page silently falls outside both categories.
+5. **Anchor-Text/Entity-Name Parity Check (extends Section 7.9's structural-link rule to breadcrumbs specifically):** Confirms every non-terminal segment label exactly matches its target entity's current `name`/`title` field value at build time — preventing a stale breadcrumb label from surviving an entity rename (Phase 5B §2.3's slug-change governance already requires a redirect entry on rename; this check ensures the *label*, not just the slug/URL, updates in lockstep).
+
+### 8.8 Breadcrumb Generation Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap eligibility, and
+internal-link relationship resolution (Sections 2.12, 3.12,
+4.10, 5.9, 6.10, 7.11) — memoized, zero additional fetch
+        │
+        ▼
+Page excluded per Section 8.2 Rule 4 / Section 8.3's
+single-level-utility-page ruling?
+        │ yes ──► no trail computed; Breadcrumb component
+        │          and BreadcrumbList node both omitted
+        │ no
+        ▼
+Static route-to-parent lookup (IA Phase 2 §4) determines
+structural parent segment(s) — including the Blog Post
+Category-resolution step (Section 8.6, Step 2) where applicable
+        │
+        ▼
+Trail array assembled: [ {label, href}, ..., {label: currentEntity.name, href: null} ]
+        │
+        ▼
+Trail passed to BOTH:
+  • Breadcrumb component (Design System Phase 4 §26.10) — visible rendering
+  • BreadcrumbList JSON-LD builder (Section 3.8/3.12) — structured-data rendering
+  (single source, two consumers — no divergent branch)
+        │
+        ▼
+Build-time validation suite executed (Section 8.7)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Page deployed with breadcrumb trail present in both
+(depth        forms, sharing the identical cache/revalidation
+mismatch,     lifecycle already established for content, metadata,
+unresolvable  structured data, canonical, robots, sitemap, and
+parent, or    internal-link resolution (Sections 2.12/3.12/4.10/
+visible/      5.9/6.10/7.11)
+schema
+mismatch)
+```
+
+**Key Property, Consistent with Sections 2.12/3.12/4.10/5.9/6.10/7.11:** Breadcrumb generation is not an eighth, independent SEO subsystem — it is a thin, final derivation layered on top of data already resolved for every prior section's purposes (route-pattern knowledge from Section 4/6, relationship resolution from Section 7, canonical URLs from Section 2/4), producing one trail array consumed identically by the visible UI and the structured-data graph. There is no point in this architecture where a page's breadcrumb could diverge from its own declared hierarchy position, its own canonical identity, or its own structured-data representation, because all four are computed from the same underlying route/entity relationship, within the same generation pass.
+
+---
+
+**End of Section 8 — Breadcrumb Architecture.**
+
+Ready to proceed to the next section (Entity SEO / Semantic Entity Architecture) on your instruction.
+
+Sections 1–8 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 9.
+
+---
+
+# 9. Entity SEO & Semantic Entity Architecture
+
+### 9.1 Entity Philosophy
+
+This section formalizes a distinction that has been implicit since Section 1.2 ("Entity-Based SEO") and operative throughout Sections 3, 7, and 8 without ever being named directly: an **entity**, in this architecture, is not synonymous with a **content record**. Every Phase 5B §3 model (Service, Industry, Location, Blog Post, etc.) is a *content record* — a page-producing, CMS-managed unit. A **semantic entity** is the real-world thing that content record *describes* or *represents* to a search engine or knowledge system — the business itself, a service offering as a concept, a place, a person. Most content records map one-to-one to a semantic entity; some content records (Case Study, FAQ Item) exist primarily to *support* other entities rather than to *be* one.
+
+**Why This Distinction Matters Architecturally:** Search engines and AI retrieval systems increasingly reason in terms of entities and the relationships between them (Section 1.2's original justification), not merely pages and keywords. This section's role is to specify which of this site's content records constitute genuine, independently-identifiable semantic entities worth reinforcing as such, and which are relational/supporting data that strengthens other entities without being independent entities themselves. Getting this distinction wrong in either direction — treating every content record as an equally weighty entity, or failing to reinforce the entities that matter — dilutes the exact machine-legibility this document exists to build.
+
+**No New Data, Only a New Lens:** Consistent with the discipline already established in Sections 3.1, 7.1, and 8.1, this section introduces no new fields on any Phase 5B model. It specifies how already-existing, already-validated fields and relationships (Phase 5B §3, IA Phase 2 §16) are organized and reinforced *as an entity graph*, extending the Entity Relationships already sketched at the IA level into full technical architecture.
+
+### 9.2 Entity Modeling Strategy
+
+**Classification Rule:** A Phase 5B content type is treated as a **Primary Entity** (Section 9.3) if it satisfies all three conditions:
+1. It represents a genuinely distinct, nameable real-world thing (an organization, a service offering, a place, a person) — not merely a container for other content.
+2. It has its own canonical, independently-routable URL (per IA Phase 2 §4).
+3. Other content records reference *it* to establish their own credibility or context (i.e., it is a relationship *target* more often than a relationship *source*).
+
+A content type failing one or more of these conditions is treated as **Supporting/Relational Data** — real, validated, structurally important content, but not itself reinforced as an independent semantic entity in the sense this section addresses.
+
+**Application of the Rule Across Phase 5B §3's Seventeen Models:**
+
+| Content Type | Primary Entity? | Reasoning |
+|---|---|---|
+| Site Settings (→ Organization) | Yes | The foundational entity every other node ultimately connects to (Section 3.3) |
+| Service | Yes | Distinct offering, independently routable, referenced by Industry/Location/Case Study/Blog Post |
+| Industry | Partial — see 9.2.1 below | Independently routable, but represents an audience *segment*, not a thing the business *is* or *offers* — Schema.org has no clean "Industry" entity type (Section 3.2 already noted this) |
+| Location | Yes | Represents a place the business serves — genuine `LocalBusiness`/place-scoped entity where geo data exists (Section 3.5) |
+| Team Member | Yes | A `Person` entity — independently nameable, referenced by Author (Phase 5B §3.7) |
+| Author | Yes, where distinct from Team Member | A `Person` entity in its own right (guest contributors) |
+| Blog Post | No | A `CreativeWork`, not itself a "thing" other content references for credibility — it is the content, not an entity described by content |
+| Case Study | No | A `CreativeWork` referencing other entities (Service, Industry, Testimonial) — exists to reinforce *those* entities' credibility, not to be an entity itself |
+| FAQ Item | No | Atomic relational content (Phase 5B §3.8), never independently identity-bearing |
+| Testimonial | No | Relational proof content, referenced by/attached to other entities |
+| Blog Category, Blog Tag | No | Taxonomic classification, not entities |
+| Navigation, Footer, CTA | No | Structural configuration, no entity semantics apply |
+
+**9.2.1 — Industry's Partial Status, Resolved:** Industry is architecturally treated as a **context/audience qualifier attached to Primary Entities**, not a Primary Entity in its own right — consistent with Section 3.2's original ruling that Industry has no direct Schema.org type and is "modeled as the audience/context for its recommended Services." This section confirms and formalizes that treatment: Industry pages exist, are indexable, and are internally linked (Section 7.4), but they do not themselves enter the entity graph as a node other pages reference by `@id` — they influence *how* Service and Case Study entities are framed (per-industry framing), without being framed themselves.
+
+### 9.3 Primary Site Entities
+
+The complete, closed set of Primary Entities this architecture reinforces, per Section 9.2's classification:
+
+1. **The Organization** (`SEO Growth Hub` itself) — sourced from `Site Settings` (Phase 5B §3.15), the root entity every other Primary Entity ultimately connects to as `provider`, `publisher`, `worksFor`, or `parentOrganization` (Section 3.3).
+2. **Each Service** — a distinct, nameable offering (Phase 5B §3.1), the entity the business's commercial identity is built from.
+3. **Each Location** (where `geoCoordinates` is present, per Section 3.5's governance) — a distinct served place.
+4. **Each Team Member** — a distinct, nameable person affiliated with the Organization (Phase 5B §3.11).
+5. **Each Author not linked to a Team Member** — a distinct person credited for content, affiliated with the Organization only insofar as `authorId` establishes a publishing relationship (Phase 5B §3.7), not employment.
+
+**Closed-Set Discipline:** This list is deliberately exhaustive and closed at the *type* level (not the *instance* level — there are many Service instances, but exactly five entity *categories*). No future content type is added to this list without a corresponding update to this document — a future content type (e.g., a hypothetical "Partner" or "Certification" entity, should the business introduce one) would require an explicit Section 9.2-style classification exercise before being treated as a Primary Entity, not an automatic inclusion.
+
+### 9.4 Entity Relationships
+
+This subsection is the semantic-entity-scoped counterpart to Section 3.11's "Entity Linking Strategy" — where Section 3.11 specified the *mechanical* `@id`-referencing discipline for JSON-LD nodes generally, this subsection specifies which relationships are considered **entity-defining** (they describe what an entity fundamentally *is* or *is affiliated with*) versus merely **contextual/promotional** (they describe supporting proof or related content, per Section 7.4's internal-linking table).
+
+**Entity-Defining Relationships (closed set):**
+
+| Relationship | Expressed As |
+|---|---|
+| Organization → offers → Service | `Organization.makesOffer` / `Service.provider` (Section 3.3, 3.6) |
+| Organization → operates in → Location | `Organization.areaServed` (aggregate) / `LocalBusiness.parentOrganization` (Section 3.5) |
+| Organization → employs → Team Member | `Person.worksFor` (Section 3.10 pattern, restated) |
+| Author (Person) → publishes → Blog Post | `CreativeWork.author` (Section 3.7) — the relationship is entity-defining for the *Person* (it establishes their authorship identity) even though Blog Post itself is not a Primary Entity |
+| Service → demonstrated by → Case Study | **Not** entity-defining — this is contextual/promotional (Section 7.4), since a Case Study does not alter what a Service fundamentally *is*, only provides evidence for it |
+
+**Governing Distinction:** Entity-defining relationships answer "what is this entity, and to what/whom is it fundamentally connected?" Contextual relationships (the much larger set already fully catalogued in Section 7.4 and Section 3's per-schema field mappings) answer "what supporting content exists about this entity?" This section does not re-litigate Section 7.4's table — it draws a line clarifying that only a small subset of those relationships are load-bearing for entity *identity*, while the rest are load-bearing for entity *promotion and proof*, a distinction that matters for how aggressively each relationship type is reinforced across pages (Section 9.7–9.8).
+
+### 9.5 Entity Identity
+
+**Stable Identity Requirement:** Every Primary Entity (Section 9.3) must resolve to the exact same `@id` (Section 3.11's convention) and the exact same canonical name string (Section 8.4's "segment label source" rule, extended here to entity identity generally) everywhere it is referenced across the entire site — not merely within a single page's graph, but across every page that references that entity.
+
+**Mechanism Guaranteeing This (restated, not re-derived):** Because every reference to a Primary Entity — whether in JSON-LD (Section 3.11), a breadcrumb segment (Section 8.4), an internal link's anchor text (Section 7.9), or a card component's heading — is sourced from that entity's single Phase 5B record (via the entity's own `id`, `slug`, and `name`/`title` field, never a locally re-typed copy), identity consistency is not a separate rule requiring independent enforcement; it is inherited for free from the Single Source of Truth Per Entity principle already established in Phase 5B §1, Principle 3. Section 9.5's contribution is naming this inherited guarantee explicitly as an *entity-identity* property, not merely a data-integrity property.
+
+**Disambiguation for Non-Unique Names:** Where a Primary Entity's name alone is insufficient for disambiguation (Location's `cityName`, per Phase 5B §3.3's own note about same-named cities), the entity's `@id` construction (Section 3.11) incorporates the disambiguating fields already validated at the data layer (`region`, `countryCode`) — meaning entity-identity disambiguation is solved by reusing Phase 5B's existing composite-uniqueness constraint (§3.3: "composite uniqueness on `(cityName, region, countryCode)`"), not by introducing a new disambiguation mechanism at the SEO layer.
+
+**Person Entity Identity — Team Member/Author Linkage:** Where `Author.linkedTeamMemberId` resolves (Phase 5B §3.7), the Author and Team Member records describe the **same real-world Person entity** — this architecture treats them as one semantic entity with two content-record touchpoints, meaning the `Person` node's `@id` (Section 3.11) is anchored to the Team Member's canonical page (the more complete, authoritative representation) regardless of which record (Author or Team Member) triggered the node's construction on a given page. An Author without a linked Team Member (a guest contributor) is its own distinct Person entity, with its own `@id`, anchored instead to wherever that Author's information is most fully presented (their byline context, since no independent Author page exists in the approved IA).
+
+### 9.6 Knowledge Graph Alignment
+
+**Restated and Extended from Section 3.3:** The Organization entity's `sameAs` array (`Site Settings.socialProfileUrls`, Phase 5B §3.15) remains the primary mechanism for connecting this site's Organization entity to an existing or emerging Knowledge Graph entry — Section 9.6 adds no new mechanism here, only confirms Organization's status as the sole entity in this architecture actively pursuing Knowledge Graph alignment at launch.
+
+**Team Member/Person Entities — Deferred, Not Excluded:** Individual Team Member `Person` entities (Section 9.3, item 4) carry their own `sameAs` potential (Phase 5B §3.11's `linkedInUrl` field), which contributes modestly to individual E-E-A-T-adjacent disambiguation (full E-E-A-T treatment deferred to a future section per your instruction) but is not, at this site's scale, expected to independently surface in Google's Knowledge Graph the way the Organization entity might — this is noted as an accurate expectation-setting statement, not a limitation requiring a workaround.
+
+**Service and Location Entities — No Independent Knowledge Graph Target:** Individual Services and Locations are not expected to become independent Knowledge Graph nodes (they are offerings/places *of* the Organization, not standalone public entities with their own graph presence) — their entity reinforcement value (Sections 9.7–9.8) is in strengthening the *Organization's* graph presence and in supporting rich-result eligibility (Section 3's structured data), not in becoming individually graphed entities themselves. This is a deliberate scope clarification preventing over-investment in a Knowledge-Graph outcome this architecture cannot realistically produce for every Service/Location instance.
+
+### 9.7 Content Entity Reinforcement
+
+**Principle:** Every piece of content produced by this site (every Blog Post, Case Study, FAQ answer) should, wherever genuinely relevant, reinforce a Primary Entity's identity and relationships rather than existing in entity-isolation — this is the practical, content-production-facing expression of Section 9.1's "entity-based, not keyword-based" philosophy.
+
+**Mechanisms Already in Place (cross-referenced, not newly introduced):**
+- **Blog Post → Service reinforcement:** `BlogPost.relatedServiceId` (Phase 5B §3.4) already ties every topically-relevant post back to the Service entity it reinforces — Section 9.7's contribution is framing this existing field as *entity reinforcement*, not merely internal linking (Section 7.3's Cluster→Pillar pattern) or topical authority (IA §17) — the same field serves all three purposes simultaneously, which is precisely the point of Entity-Based SEO (Section 1.2): one well-modeled relationship, multiple compounding benefits.
+- **Case Study → Service/Industry reinforcement:** `CaseStudy.serviceId`/`industryId` (Phase 5B §3.9) reinforce the Service entity's credibility (via the `Review` node pattern, Section 3.10) and provide Industry-context framing (Section 9.2.1) — again, one relationship, already modeled, now understood additionally through an entity-reinforcement lens.
+- **FAQ Item → Service/Industry/Location reinforcement:** Scoped FAQ embeds (Phase 5B §3.8's `associatedPage(s)`) reinforce the host entity by pre-emptively answering entity-specific questions in a format (Section 3.9's `FAQPage`) that both search engines and AI answer engines associate directly with that entity's page.
+
+**No New Reinforcement Mechanism Introduced:** This subsection deliberately does not add a new field, a new relationship type, or a new content requirement — its entire contribution is confirming that the relationship architecture already frozen in Phase 5B §3 and operationalized in Sections 3 and 7 *already constitutes* entity reinforcement, and stating that explicitly so future content-strategy decisions (outside this technical document's scope) can be made with this framing in mind.
+
+### 9.8 Cross-Page Entity Consistency
+
+**The Consistency Guarantee, Stated Comprehensively:** Because of Section 9.5's identity mechanism, a Primary Entity's representation is guaranteed consistent across every surface where it appears — its JSON-LD `@id` and name (Section 3.11), its breadcrumb label where applicable (Section 8.4), its internal-link anchor text (Section 7.9), its canonical URL (Section 2.6/4.10), and its appearance in the sitemap (Section 6.4) — all trace to the identical Phase 5B record and the identical shared resolution functions already established across Sections 2–8. Section 9.8 does not introduce a new consistency mechanism; it names this as the culmination of every prior section's single-source-of-truth discipline, viewed specifically through the lens of "does this entity look and identify itself the same way everywhere it appears?"
+
+**The One Deliberate Exception — Contextual Framing Without Identity Drift:** A Service entity is *framed* differently depending on context (its own pillar page presents full deliverables/process, Phase 5B §3.1; an Industry page presents it as one of several `recommendedServiceIds`; a Location page presents it in local context per Section 3.5) — this contextual variation in *presentation* is expected and correct, and does not constitute an identity inconsistency, because the entity's core identifying facts (`name`, `@id`, canonical URL) remain identical across all three contexts. Section 9.8's consistency guarantee applies to entity *identity*, not to content *framing*, which is expected and desirable to vary by context per the UX Blueprint's page-journey specifications (Phase 3 §6, §9).
+
+### 9.9 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11, 3.13, 4.9, 5.8, 6.9, 7.10, and 8.7:
+
+1. **Primary Entity Closed-Set Conformance Check:** Build-time validation confirms that JSON-LD `@id` generation (Section 3.11) is only ever invoked for the five Primary Entity categories enumerated in Section 9.3 — flagging (as a warning, consistent with Section 7.10's precedent for judgment-calibrated conditions) any future code path that constructs a stable `@id` for a non-Primary-Entity content type, since this would indicate either an undocumented entity-classification decision or an implementation drift from Section 9.2's rule.
+2. **Cross-Page `@id` Uniqueness-Per-Entity Check:** Extending Section 3.13's cross-reference integrity check, build-time validation confirms that every occurrence of a given Primary Entity's `@id` across the *entire* generated site (not just within one page's graph) resolves to an identical string — catching the specific failure mode Section 9.5 exists to prevent (e.g., a Team Member's `@id` accidentally differing between their own bio context and a Blog Post byline referencing them).
+3. **Entity-Defining Relationship Completeness Check:** Confirms every Primary Entity instance has, at minimum, its Section 9.4 entity-defining relationship correctly populated and resolvable (e.g., every Service resolves a valid `provider` reference to the Organization; every Team Member resolves a valid `worksFor` reference) — since these relationships are load-bearing for entity identity itself, their absence is treated as a build failure, not a soft warning, distinguishing this check's severity from the Section 9.7 contextual-reinforcement relationships (which remain optional/best-effort, per Phase 5B's existing "Optional" field markings).
+4. **Industry Non-Entity Conformance Check:** Confirms Industry content records never accidentally acquire a stable cross-page `@id` or appear as a `provider`/`worksFor` target in any generated graph — a structural safeguard against Section 9.2.1's classification decision being silently violated by a future implementation.
+
+### 9.10 Entity Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links, and
+breadcrumbs (Sections 2.12, 3.12, 4.10, 5.9, 6.10, 7.11, 8.8) —
+memoized, zero additional fetch
+        │
+        ▼
+Entity classification check (Section 9.2): is the current
+page's primary content type one of the five Primary Entity
+categories (Section 9.3)?
+        │
+   ┌────┴────┐
+  yes         no (Industry, Blog Post, Case Study, FAQ Item,
+   │           Testimonial, taxonomy/config types)
+   ▼               │
+Resolve stable @id  ▼
+(Section 3.11/9.5) Entity is treated as Supporting/Relational —
+   │               its structured-data node (Section 3) still
+   ▼               emits normally, but with no independent
+Resolve             cross-page @id-consistency obligation of
+entity-defining      its own (Section 9.9, check 1)
+relationships
+(Section 9.4) —
+already-fetched
+relationship data
+(Phase 5B §6.2–6.3)
+consumed directly
+   │
+   ▼
+Person-entity linkage resolved where applicable
+(Author ↔ Team Member, Section 9.5) — anchors
+@id to the more authoritative record
+   │
+   ▼
+Entity representation feeds into JSON-LD graph construction
+(Section 3.12), already-established internal-link anchor
+text (Section 7.9), and breadcrumb label (Section 8.4) —
+no separate rendering pass; entity resolution is a
+data-preparation step consumed by artifacts already
+specified in Sections 2–8
+   │
+   ▼
+Build-time validation suite executed (Section 9.9)
+   │
+┌──┴──┐
+fail   pass
+ │       │
+ ▼       ▼
+BUILD   Page deployed with entity representation consistent
+FAILS   across every prior section's output — no independent
+        cache or regeneration cycle beyond what Sections
+        2–8 already established
+```
+
+**Key Property, Consistent with Sections 2.12/3.12/4.10/5.9/6.10/7.11/8.8:** Entity resolution introduces no new fetch, no new cache lifecycle, and no new rendering surface — it is a **classificatory and consistency-enforcing lens** applied to data and artifacts every prior section already produces. Section 9's entire technical contribution is the closed-set Primary Entity list (9.3), the entity-defining-versus-contextual relationship distinction (9.4), and the cross-page identity guarantee this makes explicit and validatable (9.5, 9.8–9.9) — not a new pipeline stage running in parallel to Sections 2–8's already-unified generation flow.
+
+---
+
+**End of Section 9 — Entity SEO & Semantic Entity Architecture.**
+
+Ready to proceed to the next section on your instruction.
+
+Sections 1–9 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 10.
+
+---
+
+# 10. EEAT Architecture
+
+### 10.1 EEAT Philosophy
+
+Experience, Expertise, Authoritativeness, and Trust (E-E-A-T) are treated in this architecture not as a content-writing checklist but as **a set of already-modeled data relationships that this section organizes and reinforces technically** — consistent with the pattern established in Section 9.1, where a search-quality concept was shown to already be substantially satisfied by decisions frozen in Phase 5B, requiring this section to *name and technically operationalize* that existing structure rather than introduce new content requirements. Nearly every field this section discusses already exists: `Author.credentials` and `Author.bio` (Phase 5B §3.7), `TeamMember.credentials` and `.linkedInUrl` (Phase 5B §3.11), `CaseStudy.clientAuthorizationConfirmed` (Phase 5B §3.9), `Testimonial.authorizationConfirmed` (Phase 5B §3.10), and the kernel's own `updatedAt` freshness field (Phase 5B §2.2). Section 10's contribution is specifying how these fields are technically surfaced, cross-referenced, and validated so that E-E-A-T signals are structurally guaranteed present wherever they are claimed to exist, rather than being an editorial aspiration.
+
+**Four Distinct Signals, Not One Undifferentiated "Trust" Score:** Consistent with how Section 9.1 distinguished content records from semantic entities, this section keeps Experience, Expertise, Authoritativeness, and Trust analytically separate (Sections 10.2–10.5), because each maps to a different combination of Phase 5B fields and different validation obligations — collapsing them into one generic "credibility" treatment would obscure which specific data gap undermines which specific signal.
+
+**Governing Constraint (inherited from Section 1.1):** No mechanism in this section may fabricate or inflate a signal beyond what genuinely exists in validated content — a Team Member's `credentials` array being empty is a true state to be rendered honestly (Design System Phase 4 §21's Empty State philosophy, applied here), never a state the architecture works around by inventing placeholder credentials. E-E-A-T signals are strengthened by making genuine expertise/experience *legible*, never by manufacturing the appearance of expertise that isn't present in the underlying data.
+
+### 10.2 Experience Signals
+
+**Definition Within This Architecture:** "Experience" (the newest and most distinct of the four E's, per current search-quality guidance) refers to first-hand, demonstrated involvement — content reflecting that its author or the business has actually *done* the thing being described, not merely researched it. This maps most directly to the **Case Study domain model** (Phase 5B §3.9), which is architecturally the site's primary Experience-signal-bearing content type.
+
+**Structural Reinforcement Already in Place:**
+- `CaseStudy.challenge`, `.strategy`, `.results` (Phase 5B §3.9) — a three-part narrative structure that is, by its very shape, a first-hand-experience account (what was faced, what was done, what happened) rather than a generalized claim — this structure was chosen in Phase 5B specifically to encode a first-hand-experience narrative, not an arbitrary content layout.
+- `CaseStudy.timeframe` and `.results` (structured `ResultMetric[]` with `beforeValue`/`afterValue`, Phase 5B §3.9) — quantified, dated outcomes are a stronger experience signal than qualitative claims alone, since they are falsifiable and specific.
+- `Testimonial` entities linked via `CaseStudy.testimonialId` (Phase 5B §3.9) — third-party corroboration of the first-hand account, technically expressed as a `Review` node (Section 3.10) attached to the Service entity the case study demonstrates.
+
+**Author-Level Experience Signals:** `Author.bio` and `Author.credentials` (Phase 5B §3.7) are the secondary Experience-bearing surface — reinforced at the Blog Post level via the byline component (already specified in UX Phase 3 §26.14 and given `Person` node treatment in Section 3.10) — an author bio that states genuine, specific prior experience (rather than generic marketing language) is an editorial-content concern outside this document's authority, but this architecture guarantees that *whatever* genuine experience content an editor supplies in `bio`/`credentials` is technically surfaced identically everywhere that Author is referenced (Section 9.5's identity-consistency guarantee, applied here to experience-signal content specifically).
+
+**No Independent "Experience" Field Introduced:** Consistent with Section 9.1's "no new data, only a new lens" discipline, this subsection identifies which already-existing fields carry Experience-signal weight; it does not propose a new `experienceDescription` field or similar — the Case Study and Author models already capture this adequately.
+
+### 10.3 Expertise Signals
+
+**Definition Within This Architecture:** "Expertise" refers to demonstrated depth of knowledge in a subject — distinct from Experience (having done something) in that Expertise can be demonstrated through explanatory, methodological, and educational content even absent a specific first-hand narrative.
+
+**Primary Expertise-Bearing Content Types:**
+- **Service pages' `processSteps` and `deliverables`** (Phase 5B §3.1) — a page that specifies *how* the work is actually done (methodology) rather than only *what* is delivered demonstrates expertise more strongly than outcome-only marketing copy; this structural requirement was already built into the Service domain model (both fields marked "Required, Min 1 item") specifically to force this level of methodological specificity at the data layer.
+- **Blog Post `body`/`directAnswer`** (Phase 5B §3.4) — the entire Editorial bounded context (Phase 5B §2.1) exists substantially as an Expertise-signal-generating mechanism; the `RichContentBlock` structure (Phase 5B §4.5) supporting headings, lists, and structured explanation over undifferentiated prose is itself an expertise-legibility mechanism, not merely an AEO-extraction mechanism (Section 1.3's observation that these mechanisms serve multiple ecosystems simultaneously applies here too — the same structural choice serves AEO extractability and Expertise demonstration at once).
+- **`About/methodology` page** (IA Phase 2 §7.4's routing, PRD-level content requirement) — the single page in the sitemap most explicitly dedicated to Expertise signaling at the *Organization* level rather than per-content-item level; this page's role in the E-E-A-T architecture is to provide the durable, stable "how we think about this discipline" statement that individual Service/Blog content can reference rather than restate.
+
+**Distinguishing Expertise From Authoritativeness (Section 10.4 boundary):** Expertise, in this framework, is what content *demonstrates through its own substance* (methodology depth, explanatory rigor); Authoritativeness (next subsection) is what *other signals confer upon* the content or its author (credentials, third-party recognition, citation). A page can demonstrate expertise through excellent methodology content even for a brand-new author with no external authority signals yet — the two are correlated in practice but architecturally distinct, and this document tracks them as such because they have different data sources and different validation obligations (Section 10.9).
+
+### 10.4 Author Authority
+
+**Primary Data Source:** `Author` (Phase 5B §3.7) and, where linked, `TeamMember` (Phase 5B §3.11) — already justified in their original Phase 5B specification explicitly as "E-E-A-T signal" fields; this subsection specifies their technical reinforcement architecture.
+
+**Reinforcement Mechanisms:**
+1. **Byline Presence, Universal and Non-Optional:** Every Blog Post has a required (`Required`, Phase 5B §3.4) `authorId` — there is no anonymous or unattributed content type in the Editorial bounded context. This is a structural guarantee, not an editorial best practice: the domain model makes authorless content impossible to publish.
+2. **Person Entity Consistency (restated from Section 9.5):** An Author's authority signal — their `credentials`, their `bio`, their `sameAs`-eligible `linkedInUrl` where Team-Member-linked — is guaranteed identical everywhere they are referenced, meaning authority signal *strength* does not vary by which page happens to reference the author; a reader (or crawler) encountering the same author across five Blog Posts sees a consistent, cumulative authority signal rather than five fragmented, potentially-inconsistent partial profiles.
+3. **`worksFor` / Organizational Affiliation:** Where `Author.linkedTeamMemberId` resolves, the `Person` node's `worksFor` property (Section 3.10) connects individual author authority to organizational authority (Section 10.6) — an author's authority is not purely personal/freestanding; it is reinforced by, and reinforces, the Organization entity's own standing.
+4. **Guest Contributor Handling:** Where `Author.linkedTeamMemberId` is `null` (a non-staff contributor, Phase 5B §3.7), the architecture does not fabricate an organizational affiliation — the `Person` node has no `worksFor` claim in this case, an honest representation consistent with Section 10.1's anti-fabrication governing constraint, even though this means guest-contributed content carries a structurally weaker organizational-authority signal than staff-authored content. This is treated as an accurate, not a deficient, representation.
+
+**Deliberate Non-Mechanism:** This architecture does not implement author-level aggregate metrics (e.g., "posts published," "years active") as a rendered authority signal — no such field exists in Phase 5B §3.7, and introducing one purely for E-E-A-T display purposes would violate the "no new data invented for signaling purposes" discipline (Section 10.1); genuine authority is expressed through the substance of `bio`/`credentials`, not through metadata about content volume.
+
+### 10.5 Trust Architecture
+
+**Definition Within This Architecture:** "Trust" is treated as the umbrella signal that the *other three* (Experience, Expertise, Authoritativeness) are, according to current search-quality frameworks, ultimately in service of — but this architecture identifies a distinct, additional technical component specific to Trust: **verifiability and authorization integrity**, which is where Phase 5B's authorization-gating mechanism becomes directly relevant.
+
+**Primary Mechanism — Authorization Gates as a Trust-Architecture Feature, Not Merely a Legal Safeguard:** `CaseStudy.clientAuthorizationConfirmed` and `Testimonial.authorizationConfirmed` (Phase 5B §3.9, §3.10, enforced at the Validation Layer per Phase 5B §5.3, and audit-logged per Phase 5B §3.18.3) were originally justified in Phase 5B as a legal/compliance safeguard (PRD §10.6). This section reframes — without altering — that same mechanism as a **Trust-signal architecture**: proof content that has passed an enforced, audited authorization gate is content this architecture can *technically guarantee* is genuine and consented-to, which is a stronger, more defensible trust foundation than proof content that merely *claims* to be authentic without a corresponding enforcement mechanism. Section 10.5 introduces no new gate — it identifies the existing gate as doing double duty.
+
+**Secondary Mechanism — Freshness as Trust:** The kernel's `updatedAt` field (Phase 5B §2.2), already reused for ISR revalidation (Phase 5A §7.3), structured-data `dateModified` (Section 3.7), and sitemap `<lastmod>` (Section 6.5), serves a fourth purpose here: content that is demonstrably, verifiably current (not merely claimed to be current in prose, e.g., "updated regularly") is a trust signal in its own right, particularly for the fast-evolving AEO/GEO subject matter this business is built around (Section 1.1's AI-Search-Readiness objective) — stale, unmaintained content on a genuinely fast-moving topic is itself a trust-eroding signal, and this architecture's freshness-tracking discipline directly mitigates that risk.
+
+**Tertiary Mechanism — Legal/Transparency Page Presence:** `/legal/privacy-policy`, `/legal/terms-of-service`, `/legal/cookie-policy` (already fully specified in IA Phase 2 §1, §3, PRD §10.5) function as baseline Trust-signal infrastructure — their mere presence, consistent linking (Section 7.7's Footer treatment), and accurate content are foundational trust hygiene this architecture already guarantees is uniformly accessible sitewide via the Footer's non-negotiable `legalLinks` minimum (Phase 5B §3.13: "Min 3").
+
+### 10.6 Organizational Trust
+
+**Primary Data Source:** `Site Settings` (Phase 5B §3.15) via the `Organization` entity (Section 3.3, Section 9.3 item 1) — the site-wide trust anchor every Primary Entity ultimately connects to.
+
+**Reinforcement Mechanisms:**
+1. **Contact Transparency:** `Site Settings.contactEmail`/`.contactPhone` (Phase 5B §3.15), surfaced both in the `Organization` schema's `contactPoint` (Section 3.3) and on the `/contact` page itself — a business that is genuinely, verifiably reachable is a foundational organizational-trust signal, and this architecture guarantees the *same* contact information is used everywhere (schema, footer, contact page) via the singleton-source discipline already established (Phase 5B §3.15, §6.5).
+2. **`sameAs` Social Proof:** `Site Settings.socialProfileUrls` (Phase 5B §3.15) connects the Organization entity to its externally-verifiable presence — already specified for Knowledge Graph purposes (Section 9.6), this same mechanism doubles as an organizational-trust signal (an organization with consistent, cross-referenced external presence is more verifiable than one existing only on its own domain).
+3. **Team Transparency:** The `/about/team` page (IA Phase 2 §7.4 routing, `TeamMember` domain model Phase 5B §3.11) — a business that names real people behind its work, each with genuine credentials and photo (mandatory `altText`, Phase 5B §3.17), is a stronger organizational-trust signal than an anonymous-feeling agency site; this architecture guarantees every `TeamMember` entity is technically complete (required `photo`, `bio`, `title`, Phase 5B §3.11) before it can be published, meaning a "team" page can never ship with thin, placeholder-quality entries.
+4. **Methodology Transparency:** `/about/methodology` (already discussed in Section 10.3 as an Expertise signal) simultaneously functions as an Organizational Trust signal — a business willing to publicly and specifically explain *how* it works is inherently more trust-bearing than one that only describes outcomes, which is precisely the rationale UX Phase 3 §13 ("Trust Building Strategy") already established at the UX-blueprint level ("Transparency as Differentiator").
+
+### 10.7 Evidence & Proof Strategy
+
+**Consolidation Point:** This subsection names the specific set of already-modeled content types functioning as this architecture's Evidence layer — the concrete, falsifiable artifacts that substantiate the Experience/Expertise/Authority/Trust signals discussed in Sections 10.2–10.6, rather than leaving those signals as unsubstantiated claims.
+
+**The Evidence Set (closed, per already-approved Phase 5B models):**
+
+| Evidence Type | Source Model | What It Substantiates |
+|---|---|---|
+| Case Study | Phase 5B §3.9 | Experience (10.2), Service credibility (via `Review` node, Section 3.10) |
+| Testimonial | Phase 5B §3.10 | Trust (10.5, via authorization gate), third-party corroboration |
+| Team Member credentials | Phase 5B §3.11 | Expertise (10.3), Author Authority (10.4) |
+| Client logos (implicit — Testimonial's `companyName`/`companyLogo`) | Phase 5B §3.10 | Organizational Trust (10.6) — recognizable-brand association |
+| Methodology content (`/about/methodology`) | Content page, not a distinct Phase 5B model | Expertise (10.3), Organizational Trust (10.6) |
+| FAQ answers | Phase 5B §3.8 | Expertise (10.3, via directness/specificity), and doubly serves AEO (deferred to next section) |
+
+**Governing Rule — Evidence Must Be Load-Bearing, Not Decorative:** Consistent with Section 10.1's anti-fabrication principle and Section 7.1's "no link may assert an unmodeled relationship" discipline, every Evidence-type instance rendered on a page must trace to an actual resolved relationship (Section 7.4's table — `Service.relatedCaseStudyIds`, `CaseStudy.testimonialId`, etc.), never a generically-inserted "trust badge" disconnected from the specific entity it's meant to substantiate. A Service page's evidence must be evidence *for that Service specifically*, not a generic sitewide trust-signal block repeated identically across unrelated pages — this is the E-E-A-T-specific application of Section 9.8's cross-page consistency principle, applied to evidence relevance rather than entity identity.
+
+### 10.8 Cross-Page Trust Consistency
+
+**Direct Extension of Section 9.8:** Just as Section 9.8 guaranteed a Primary Entity's *identity* is consistent everywhere it appears, this subsection guarantees that a Primary Entity's *trust/authority signals* are consistent everywhere it appears — an Author's credentials do not appear complete on one Blog Post's byline and truncated on another; a Team Member's authorization-gated Testimonial does not display on one Case Study but a *non*-authorization-gated version elsewhere (structurally impossible, since Phase 5B §5.3's gate operates on the Testimonial record itself, not per-rendering-context).
+
+**The One Legitimate Variation — Depth, Not Substance:** Consistent with Section 9.8's "contextual framing without identity drift" allowance, trust-signal *depth of presentation* may reasonably vary by context (a Blog Post byline shows a compact author name + date, per UX Phase 3 §26.14's "Compact" variant; the `/about/team` page shows the same Team Member's full bio and credentials, per the "Full" variant) — this is expected, UX-Phase-3-approved variation in presentation depth, not an inconsistency in the underlying trust signal itself, since both variants source from the identical, singular `TeamMember`/`Author` record.
+
+**Validation Boundary:** Where Sections 9.9's cross-page `@id`-consistency check already guards entity identity, this subsection's trust-consistency guarantee is validated by confirming that no rendering context ever displays a *subset* of an authorization-gated entity's data that would misrepresent its authorization status (e.g., a Testimonial fragment shown without any indication it underwent the authorization gate would not be a violation per se, since the gate is a publish-precondition, not a display-requirement — but a Testimonial somehow rendering *before* its `status` reaches `PUBLISHED` would be, and this is already structurally prevented by Phase 5B §2.4's reachability rules, inherited here rather than re-implemented).
+
+### 10.9 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 9.9:
+
+1. **Author Completeness Check:** Build-time validation confirms every `PUBLISHED` Author record has non-empty `bio` and, where feasible, at least one `credentials` entry — while `credentials` remains `Optional` at the Phase 5B §3.7 schema level (a legitimate state for some contributors), this check surfaces a **warning** (consistent with Section 7.10/9.9's precedent for judgment-calibrated, non-structural conditions) when an Author's authority-signal fields are thin, flagging it for editorial attention rather than failing the build.
+2. **Authorization Gate Cross-Check (restates and extends Phase 5B §5.3/§9.1):** Confirms every `PUBLISHED` Case Study and Testimonial has both `clientAuthorizationConfirmed`/`authorizationConfirmed: true` *and* a corresponding `AUTHORIZATION_CONFIRMED` `AuditLogEntry` (Phase 5B §3.18.3) — this check already exists at the Phase 5B validation layer; Section 10.9 re-confirms it is within scope of "E-E-A-T architecture validation" specifically because Section 10.5 reframed this mechanism as a Trust-signal feature, not merely a compliance feature, meaning its correct enforcement is now also an E-E-A-T architectural guarantee, not only a legal one.
+3. **Evidence Relevance Check (extends Section 7.10's relationship-to-link correspondence check):** Confirms every rendered Evidence-type element (Section 10.7) on a given page traces to an actual resolved relationship for *that specific entity* — a build-time check preventing the "generic trust badge" anti-pattern Section 10.7 explicitly prohibits.
+4. **Team Member Field Completeness Check:** Confirms every `PUBLISHED` Team Member has non-empty `photo` (with `altText`, inherited from Phase 5B §3.17's mandatory rule), `bio`, and `title` — these are already `Required` fields at the Phase 5B §3.11 schema level, so this is a restated confirmation (not a new rule) that Organizational Trust (Section 10.6) is structurally incapable of shipping with an incomplete team profile.
+5. **Cross-Page Consistency Spot-Check (extends Section 9.9's `@id`-uniqueness check to trust-signal fields specifically):** Confirms that wherever an Author/Team Member's `credentials`/`bio` content appears across multiple rendering contexts (compact byline vs. full profile, Section 10.8), the compact version's content is a genuine subset/truncation of the full version's content, never a divergent or contradictory account.
+
+### 10.10 EEAT Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, and entity resolution (Sections 2.12 through
+9.10) — memoized, zero additional fetch
+        │
+        ▼
+Does the current page's entity carry E-E-A-T-relevant fields
+(Author/TeamMember credentials, CaseStudy/Testimonial
+authorization state, updatedAt freshness)?
+        │
+   ┌────┴────┐
+  yes         no (e.g., a Legal page, a Navigation-only render)
+   │           │
+   ▼           ▼
+Resolve Person-entity authority         E-E-A-T resolution
+data (Section 10.4) — reuses            step is a no-op;
+already-fetched Author/TeamMember       page proceeds through
+relationship data (Phase 5B §6.2–6.3)   Sections 2–9's flow
+   │                                     unaffected
+   ▼
+Resolve authorization-gate status for
+any referenced CaseStudy/Testimonial
+(Phase 5B §5.3, §3.18.3) — status is
+already enforced at publish-time;
+this step confirms presence, does not
+re-evaluate the gate itself
+   │
+   ▼
+Resolve Evidence-type relationships
+(Section 10.7) — reuses Section 7's
+already-resolved relationship arrays,
+filtered to only those genuinely
+relevant to the current entity
+   │
+   ▼
+Freshness signal (updatedAt) already
+resolved for structured data (Section
+3.7) and sitemap (Section 6.5) — no
+independent fetch; referenced here as
+a Trust-signal input (Section 10.5)
+   │
+   ▼
+Resolved E-E-A-T data feeds into byline
+rendering (compact/full variants, Section
+10.8), Person/Review JSON-LD nodes
+(Section 3.10), and Evidence-block
+rendering (Section 10.7) — no separate
+rendering surface introduced
+   │
+   ▼
+Build-time validation suite executed
+(Section 10.9)
+   │
+┌──┴──┐
+fail   pass (or warning-only, per
+ │      Section 10.9's checks 1 and 5's
+ │      severity calibration)
+ ▼       │
+BUILD    Page deployed with E-E-A-T signals
+FAILS    consistent across every prior section's
+(missing output — no independent cache or
+required  regeneration cycle beyond what Sections
+field,    2–9 already established
+broken
+authorization
+gate, or
+evidence/
+relationship
+mismatch)
+```
+
+**Key Property, Consistent with Sections 2.12 through 9.10:** E-E-A-T architecture introduces no new fetch, no new cache lifecycle, and no new content fields — its entire technical contribution is (a) classifying which already-existing Phase 5B fields carry which of the four E-E-A-T signal types (10.2–10.6), (b) naming the authorization-gate mechanism's dual role as both compliance safeguard and trust-signal guarantee (10.5), (c) establishing Evidence-relevance and cross-page consistency as validatable, build-time-enforced properties (10.7–10.9) rather than editorial aspirations. Like Section 9, this section is a classificatory and consistency-enforcing lens over data and artifacts already produced by the unified generation flow established in Sections 2 through 9.
+
+---
+
+**End of Section 10 — EEAT Architecture.**
+
+Ready to proceed to the next section (AEO — Answer Engine Optimization Technical Architecture) on your instruction.
+
+Sections 1–10 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 11.
+
+---
+
+# 11. Answer Engine Optimization (AEO) Technical Architecture
+
+### 11.1 AEO Philosophy
+
+Answer Engine Optimization, as established in Section 1.3, is not a separate content track from traditional SEO — it is traditional crawlability and indexability (Section 5) plus a **specific structural discipline** that makes content extractable as a self-contained, correct answer rather than merely findable as a relevant document. This section formalizes that structural discipline, and — consistent with the pattern established across Sections 9 and 10 — it introduces almost no new data: the `directAnswer` field on Blog Post (Phase 5B §3.4) and the concise-answer constraint on FAQ Item (Phase 5B §3.8) were both modeled specifically for this purpose from the outset, and the `FAQPage` schema architecture (Section 3.9) already exists. Section 11's contribution is to specify the **selection, extraction, and consistency rules** that make those already-modeled fields function as a coherent AEO system, rather than isolated, independently-behaving features.
+
+**Answer Engines Are Not a Single Consumer:** Consistent with Section 1.3's table (traditional AI Overviews, Perplexity-class answer engines, voice assistants), this section treats "answer engine" as a category of consumer that extracts a bounded, self-contained passage from a larger page and presents it with attribution — the technical requirements that satisfy one member of this category (a concise, directly-responsive, unambiguous passage near the top of relevant content) satisfy the category as a whole. This architecture does not build separate extraction paths per named answer-engine product.
+
+**Governing Constraint (restated from Section 1.1, applied here specifically):** AEO structural discipline must never distort content in a way that harms the human reader — a `directAnswer` paragraph is not permitted to feel like a jarring, out-of-voice insertion; it must read as a natural, well-written opening to the piece it introduces. Where AEO structural requirements and prose quality could theoretically conflict, prose quality (an editorial concern, not overridden by this document) governs the wording, while this architecture governs the *structural placement and validation* of that wording.
+
+### 11.2 Answer-First Content Architecture
+
+**The "Answer-First" Principle, Defined:** Content that a user or answer engine might query is structured so that the most direct, complete response to the implied question appears **first**, with elaboration, nuance, and supporting detail following — inverting the traditional narrative or scene-setting-first structure common in general web writing. This is already the governing structure UX Phase 3 §3 (Information Consumption Strategy) established at the UX level ("Headline → Summary/Direct Answer → Supporting Detail → Proof → Action") and UX Phase 3 §7 established specifically for Blog content — Section 11.2 confirms this structure as the AEO-technical requirement it always was, not a new rule.
+
+**Structural Application Across Content Types:**
+
+| Content Type | Answer-First Mechanism | Data Source |
+|---|---|---|
+| Blog Post | `directAnswer` field, rendered as the literal first content block after the title/metadata | Phase 5B §3.4 |
+| FAQ Item | `answer` field, inherently answer-first by the type's own design (a question immediately followed by its answer, no preamble) | Phase 5B §3.8 |
+| Service page | `outcomeStatement` (Phase 5B §3.1) functions as the answer-first element for the implicit question "what does this service deliver?" — positioned as the hero subheadline (UX Phase 3 §6) | Phase 5B §3.1 |
+| Case Study | `headlineMetric` (Phase 5B §3.9) functions as the answer-first element for the implicit question "what result did this achieve?" | Phase 5B §3.9 |
+
+**Why This Table Extends Beyond Blog Post:** Section 1.3 already established that AEO/voice/answer-engine consumption is not limited to Blog content — a query like "what results does an SEO agency get for healthcare clients" could plausibly be answered from a Case Study's `headlineMetric`, and "what does local SEO include" from a Service's `outcomeStatement`/`deliverables`. This architecture therefore treats *every* content type carrying a naturally answer-shaped field as an AEO surface, not only the Blog domain — this is the specific technical elaboration Section 11 adds beyond what Sections 1 and 9–10 already established for these fields under other names.
+
+### 11.3 Direct Answer Modeling
+
+**Primary Mechanism (restated in full from Phase 5B, now given its complete AEO-specific rationale):** `BlogPost.directAnswer` (Phase 5B §3.4) — "40–160 words (enforced)... the first ~100 words be a direct, extractable answer" — is validated as its **own discrete field**, separate from `body`, specifically so this architecture can guarantee its presence, length, and positional placement independent of how an editor structures the rest of the article. This field-level separation (rather than relying on the first paragraph of `body` informally serving this role) is the single most consequential AEO-architecture decision already made in this project, and Section 11.3 exists to confirm why that separation — rather than a convention applied to free-form body text — was the correct choice: a separately validated field can be build-time-enforced (Phase 5B §5.3's `superRefine` word-count check); an informal "first paragraph" convention cannot be mechanically verified at all.
+
+**Rendering Discipline:** `directAnswer` is rendered as a visually and structurally distinct opening element (UX Phase 3 §7's "Direct-answer opening (first ~100 words, extractable for AEO/GEO)") — not merely the first sentence of `body` with no structural distinction. This matters technically because answer engines' extraction heuristics generally weight content that is structurally set apart (a lead paragraph, a summary box) more heavily than content that is merely early in a longer block — the separate field-and-render-treatment satisfies this heuristic by construction rather than by coincidence of writing style.
+
+**Self-Containment Requirement:** A `directAnswer` value must be interpretable **without** requiring the reader to have already read the title or surrounding context — this is a validation-adjacent content-quality principle (not independently machine-checkable, and therefore not a hard build-time gate, consistent with Section 10.9's precedent of using warnings for judgment-calibrated conditions) but is stated here as the design intent the 40–160 word bound and the "direct, extractable answer" language in Phase 5B §3.4 were chosen to encourage: a self-contained answer is what makes a passage safely quotable/citable by an external system without losing meaning when extracted from its surrounding page.
+
+**Non-Application to Other Answer-First Fields (Section 11.2's table):** `outcomeStatement` (Service) and `headlineMetric` (Case Study) are **not** independently word-count-validated for AEO-extraction purposes the way `directAnswer` is — they are already tightly bounded by their own Phase 5B validation rules (`outcomeStatement`: 10–120 chars; `headlineMetric`: a `{value, label}` pair with no elaboration) for reasons unrelated to AEO (concise hero copy, per UX Phase 3 §6/§8), and happen to satisfy the answer-first principle as a byproduct of already being short and direct. This is a deliberate scope distinction: only Blog Post required a purpose-built field because only long-form Editorial content has the length and structural freedom where an unstructured "first paragraph" could otherwise fail to be answer-shaped.
+
+### 11.4 Question & Intent Modeling
+
+**Primary Mechanism:** `FAQItem.question` (Phase 5B §3.8) is the system's explicit question-modeling field — every FAQ Item is, by definition, an author-declared question-intent pairing, requiring no inference or extraction from unstructured content.
+
+**Implicit Question Modeling for Non-FAQ Content:** Blog Post titles (Phase 5B §3.4's `title`, "10–120 chars") are frequently, though not exclusively, phrased as questions or implied-question topics (per the Keyword Cluster Architecture's already-approved long-tail patterns, IA Phase 2 §18 — "what is AEO," "how does SEO work"). This architecture does not introduce a separate, formally-modeled "question" field on Blog Post distinct from `title` — the title itself, combined with the `directAnswer` field (Section 11.3), already constitutes a question-answer pairing in practice, and introducing a redundant, parallel "impliedQuestion" field would duplicate data already expressed by `title` without adding extraction value, violating the "no new data invented for signaling purposes" discipline already established in Section 10.1.
+
+**Intent Categorization:** `FAQItem.category` (Phase 5B §3.8's `FAQCategory` enum: `PRICING | PROCESS | TECHNICAL | RESULTS_TIMELINE | AEO_GEO | GENERAL`) provides the system's only formal intent-classification layer — grouping questions by the underlying user need they address (a pricing objection, a process clarification, a results-timeline expectation) rather than by topic alone. This categorization is already fully specified at the data layer; Section 11.4's contribution is confirming this is the architecture's intent-modeling mechanism and that no parallel or competing intent taxonomy exists elsewhere in the system (avoiding the drift risk of two independently-maintained classification schemes for conceptually the same thing).
+
+**Cross-Reference to the Keyword Cluster Architecture (IA Phase 2 §18):** The Supporting Long-Tail Pattern column of that already-approved table (e.g., "how does SEO work," "what is AEO") is the content-strategy-level source that FAQ Items and Blog Post titles are expected to draw from — this architecture's role is confirming that the *data model* (FAQItem, Blog Post) is structurally capable of representing every pattern that table anticipates, not re-deciding what those patterns should be (an editorial/content-strategy concern already settled in IA Phase 2).
+
+### 11.5 FAQ Architecture
+
+**Restated from Section 3.9, Reframed for AEO Specifically:** Section 3.9 already fully specified the `FAQPage` schema's two emission contexts (standalone hub, scoped embeds) and field mapping. Section 11.5 does not re-derive that architecture — it confirms the FAQ system's role as **the single most AEO-optimized content type in this architecture**, and specifies the one AEO-specific consideration Section 3.9 did not address: **answer-length discipline as an extraction-optimization concern**, distinct from the schema-conformance concern Section 3.9 already covered.
+
+**Answer-Length Discipline (extends Phase 5B §3.8's existing validation):** `FAQItem.answer` is validated at "20–500 chars, plain/lightly-formatted text" (Phase 5B §3.8) — this range was already chosen specifically to match `FAQPage` schema's expectation of a concise, self-contained answer (Phase 5B §3.8's own justification: "deliberately constrained format to keep answers AEO-appropriate"). Section 11.5 adds one refinement: answers toward the **lower** end of this range (roughly 20–150 characters) are the strongest candidates for voice-search and direct-answer-box extraction (Section 1.3's Voice Search row), since these consumption contexts favor maximally concise responses; answers toward the **upper** end (300–500 characters) remain fully schema-valid and useful for on-page human reading and for answer-engine products that synthesize longer responses (Perplexity-class), but are less likely to be verbatim-extracted into a single-sentence voice response. This is stated as a **content-quality guideline informing editorial judgment**, not a narrower hard validation bound — Phase 5B §3.8's existing 20–500 range remains the enforced constraint; this refinement does not alter it.
+
+**Scoped-Embed AEO Value (extends Section 3.9's two-context model):** Scoped FAQ embeds on Service/Industry/Location pages carry distinct AEO value from the standalone `/faq` hub precisely because they answer entity-specific questions in entity-specific context — "how much does local SEO cost" answered on the Local SEO service page is a stronger AEO signal for that specific query than the same question answered generically on the standalone hub, since the scoped page's surrounding entity context (Section 9's entity-reinforcement discipline) disambiguates the answer's applicability. This is the direct AEO-specific rationale for a design decision (the two-context FAQ model) that Section 3.9 already made for schema-architecture reasons — confirming the same structural choice serves both purposes simultaneously, consistent with the compounding-benefit pattern already observed in Section 9.7.
+
+### 11.6 Featured Snippet Readiness
+
+**Definition Within This Architecture:** "Featured snippet readiness" refers to structural formatting — lists, tables, step sequences, definition-style paragraphs — that traditional search engines' snippet-extraction algorithms are known to favor, a distinct (though overlapping) target from the AI-answer-engine extraction discussed in Section 11.7.
+
+**Primary Mechanism:** The `RichContentBlock` discriminated union (Phase 5B §4.5) already provides the exact structural primitives featured-snippet extraction favors: `{ type: 'list'; ordered: boolean; items: string[] }` for both ordered (step-by-step) and unordered (feature/benefit) lists, and `{ type: 'heading'; level: 2 | 3 | 4; text: string }` for the clear, question-phrased subheadings that snippet algorithms use to locate a relevant passage within a longer document. Section 11.6 introduces no new block type — it confirms that the block set already frozen in Phase 5B §4.5 was sufficient for this purpose from the outset (as Phase 5B §4.5's own original justification noted: "content must be parseable at the block level... for both rendering and future structured-data/AI-extraction purposes").
+
+**Structural Guidance, Not a New Validation Rule:** Unlike `directAnswer`'s hard word-count enforcement (Section 11.3), featured-snippet-favorable formatting (using `list` blocks for genuinely list-shaped content, using `heading` blocks at appropriate density) is an editorial-craft concern this architecture enables but does not mechanically enforce — there is no meaningful build-time check for "does this article contain a sufficient proportion of list blocks," since that would be a content-quality judgment, not a structural-integrity one. This is consistent with how Section 11.3 distinguished self-containment (encouraged, not enforced) from word-count (enforced).
+
+**Table Support (restated from Design System, applied here for AEO purposes):** The Table System (Design System Phase 4 §20) — reserved for comparison content — is a further snippet-readiness surface where genuinely tabular content exists (e.g., a future "SEO vs. AEO vs. GEO" comparison); this architecture notes the `RichContentBlock` union (Phase 5B §4.5) does not currently include a `table` block variant, meaning comparison-table content would today be authored as a `list` block or handled as a dedicated component outside `RichContent` — flagged here as a scoped gap consistent with Architecture Philosophy's "extensibility designed for, not built out ahead of need" (Phase 5A §1): the same additive-block-variant pattern already established for future video content (Section 6.8) would apply identically here if/when genuinely tabular long-form content becomes a frequent authoring need.
+
+### 11.7 AI Answer Extraction Strategy
+
+**Consolidation Point:** This subsection names the complete, closed set of mechanisms — all already specified across Sections 3, 9, 10, and 11.2–11.6 — that together constitute this architecture's AI-answer-extraction strategy, confirming no separate, additional mechanism is needed beyond what has already been built for other, related purposes.
+
+**The Extraction-Readiness Stack:**
+
+| Layer | Mechanism | Prior Reference |
+|---|---|---|
+| Crawl/render access | SSG-served, fully-formed HTML; permissive AI-crawler access posture | Section 5.7 |
+| Structural extractability | `RichContentBlock` discriminated union; `directAnswer` field | Section 11.2–11.3, Phase 5B §4.5 |
+| Concise, schema-eligible Q&A | `FAQPage` structured data | Section 3.9, 11.5 |
+| Attribution/citation-worthiness | `Person`/Author E-E-A-T signals; `dateModified` freshness | Section 10.4, 10.5 |
+| Entity disambiguation | Stable `@id`, entity-defining relationships | Section 9.4–9.5 |
+| Source authority | `Organization` entity, `sameAs` linkage | Section 3.3, 9.6, 10.6 |
+
+**Governing Observation:** No row in this stack was built specifically and only for AI-answer-extraction purposes — each was justified independently in its own section for its own primary purpose (crawlability, schema conformance, E-E-A-T, entity consistency). Section 11.7's contribution is the explicit observation that these mechanisms, taken together, are *already* a complete AI-extraction-readiness architecture — directly demonstrating Section 1.3's governing claim that "one architecture... serve[s] all six ecosystems simultaneously." This document does not add a seventh mechanism; it certifies the six already documented compose into AEO/AI-answer readiness.
+
+**Attribution Expectation, Stated Honestly:** This architecture cannot guarantee that any specific AI answer-engine product will attribute or link back to the source page when synthesizing an answer from this site's content — attribution behavior is controlled entirely by the consuming platform, not by the source site. This section's mechanisms maximize the *likelihood* and *quality* of extraction and (where the platform chooses to attribute) the *correctness* of that attribution — they cannot compel attribution itself, an important and honest scope boundary consistent with Section 1.1's "human-first, crawler-friendly, not manufactured" governing test.
+
+### 11.8 Cross-Page Answer Consistency
+
+**Direct Extension of Sections 9.8 and 10.8:** Just as those sections guaranteed entity identity and trust-signal consistency respectively, this subsection guarantees that where the **same underlying question** is answered in more than one location (e.g., "how much does local SEO cost" might be addressed in a scoped FAQ on `/services/local-seo` and, differently worded, within that same page's `body` prose, or even echoed in a standalone `/faq` entry), the answers do not **contradict** one another, even though they may legitimately differ in phrasing, depth, or framing per their context (the same "contextual framing without identity drift" allowance established in Section 9.8).
+
+**Mechanism — Why Contradiction Risk Is Already Structurally Low:** Because FAQ content is modeled once per `FAQItem` (Phase 5B §3.8) and reused via reference (`associatedPage(s)`) across its embed contexts rather than being re-authored per page (Section 3.9's two-context model reuses the *same* record, never a duplicated copy), the primary contradiction risk this subsection would otherwise need to guard against — two independently-authored answers to the same question drifting apart over time — is already substantially prevented by the reuse-not-duplication modeling decision made back in Phase 5B §3.8. Section 11.8's contribution is naming this as an **answer-consistency guarantee**, not merely a data-deduplication convenience.
+
+**Residual Risk — Prose vs. FAQ Divergence:** The one place genuine divergence risk remains is between a scoped FAQ's answer and *unstructured* prose elsewhere on the same or a related page addressing the same underlying question in different words (e.g., a Service page's `body` content and its own scoped FAQ both touching on pricing). This is a content-governance concern this architecture flags but cannot mechanically eliminate (prose contradiction detection is not a build-time-checkable structural property) — Section 11.9 specifies this as a documented, warning-tier check rather than a false claim of full automated prevention.
+
+### 11.9 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 10.9:
+
+1. **`directAnswer` Presence and Bound Enforcement (restates Phase 5B §5.3, confirmed in scope here):** Every `PUBLISHED` Blog Post has a non-empty `directAnswer` within its validated 40–160 word range — already a hard build-time failure per Phase 5B §5.3; Section 11.9 confirms this check is within AEO-architecture validation scope specifically because Section 11.3 established this field's AEO purpose as primary, not incidental.
+2. **FAQ Answer Bound Enforcement (restates Phase 5B §5.1's schema, confirmed in scope here):** Every `PUBLISHED` FAQ Item's `answer` falls within the 20–500 character range — restated confirmation, not a new rule.
+3. **Question-Field Non-Emptiness and Question-Shape Lint:** A warning-tier (not build-failing, consistent with Section 11.4's acknowledgment that question-phrasing is partly an editorial judgment) check flags any `FAQItem.question` that does not end in a question mark or begin with a recognizable interrogative word — catching likely data-entry errors (a statement mistakenly entered where a question was intended) without hard-blocking on the inherent fuzziness of natural-language question detection.
+4. **Answer-First Structural Position Check:** Build-time validation confirms `BlogPost.directAnswer` is rendered as the literal first content element following title/metadata (Section 11.3's rendering discipline) — an implementation-conformance check, not a content-quality check, verifying the *position* guarantee rather than the *content* quality of the field.
+5. **FAQ Reuse Integrity Check (extends Section 11.8's consistency guarantee):** Confirms every scoped FAQ embed genuinely references (via `associatedPage(s)`) an existing `FAQItem` record rather than a page ever rendering independently-authored, unreferenced "FAQ-like" content that would bypass the reuse-not-duplication guarantee — a structural check ensuring Section 11.8's core consistency mechanism cannot be silently circumvented by a future implementation shortcut.
+
+### 11.10 AEO Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, entity resolution, and E-E-A-T resolution
+(Sections 2.12 through 10.10) — memoized, zero additional fetch
+        │
+        ▼
+Does the current entity carry an answer-first field
+(directAnswer, outcomeStatement, headlineMetric) or
+resolve associated FAQ Items?
+        │
+   ┌────┴────┐
+  yes         no
+   │           │
+   ▼           ▼
+Resolve and position the answer-first   AEO resolution step
+element as the structurally-first        is a no-op; page
+content block (Section 11.2–11.3)        proceeds through
+   │                                      Sections 2–10's
+   ▼                                      flow unaffected
+Resolve associated FAQItems (Section
+11.5) — reuses Section 3.9's already-
+established two-context resolution;
+no separate fetch
+   │
+   ▼
+FAQPage JSON-LD already constructed
+per Section 3.9/3.12 — this flow
+confirms, not reconstructs, that
+emission; AEO adds no parallel
+structured-data pass
+   │
+   ▼
+RichContentBlock structure (list/heading
+blocks, Section 11.6) rendered per its
+already-established rendering path —
+no AEO-specific rendering branch
+   │
+   ▼
+Build-time validation suite executed
+(Section 11.9)
+   │
+┌──┴──┐
+fail   pass (or warning-only, per
+ │      checks 3 and 5's severity
+ │      calibration)
+ ▼       │
+BUILD    Page deployed with AEO-readiness
+FAILS    signals consistent with every
+(missing prior section's output — no
+directAnswer, independent cache or
+out-of-bound regeneration cycle beyond
+FAQ answer,   what Sections 2–10 already
+broken FAQ    established
+reuse
+reference)
+```
+
+**Key Property, Consistent with Sections 2.12 through 10.10:** AEO architecture introduces no new fetch, no new cache lifecycle, and — critically, unlike Sections 9 and 10 which were purely classificatory lenses — introduces exactly **one** genuinely new structural artifact already latent in Phase 5B's design: the mandatory positional and length discipline around `directAnswer`, now given its full rendering and validation specification. Every other mechanism in this section (FAQ, `RichContentBlock`, entity/trust signals) was already fully built for other purposes in Sections 3, 9, and 10; Section 11's role has been to demonstrate, name, and validate their compounding contribution to answer-engine readiness specifically.
+
+---
+
+**End of Section 11 — Answer Engine Optimization (AEO) Technical Architecture.**
+
+Ready to proceed to the next section (GEO — Generative Engine Optimization Technical Architecture) on your instruction.
 
