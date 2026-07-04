@@ -1826,3 +1826,173 @@ reference)
 
 Ready to proceed to the next section (GEO — Generative Engine Optimization Technical Architecture) on your instruction.
 
+Sections 1–11 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 12.
+
+---
+
+# 12. Generative Engine Optimization (GEO) Technical Architecture
+
+### 12.1 GEO Philosophy
+
+Where Section 11 (AEO) addressed **answer engines** — systems extracting a single, bounded, concise passage to directly answer a discrete question — GEO addresses a distinct consumption pattern: **generative AI systems that synthesize responses by retrieving and combining multiple passages, potentially across multiple pages of this site and alongside other sources**, then present a composed answer that may paraphrase, summarize, or blend content rather than quote a single extracted passage verbatim. This is the technical distinction Section 1.3 already drew between "Answer Engines" and "LLM Retrieval" as separate ecosystem rows, and Section 12 is the full architectural elaboration of that second row.
+
+**Relationship to Section 11 — Extension, Not Duplication:** Every mechanism Section 11 established (structural extractability, `directAnswer`, `FAQPage`, entity/trust signals) remains fully load-bearing for GEO — a passage that is well-formed enough to be a *featured snippet* is generally also well-formed enough to be *cleanly retrieved into a RAG pipeline*. Section 12 does not re-derive these; it addresses the **additional** structural concerns that arise specifically when content may be retrieved as one of several passages synthesized together, rather than extracted and presented in isolation — namely, whether a passage retrieved *without* its full surrounding page context still carries enough self-contained meaning, attribution, and disambiguation to be safely usable in a multi-source synthesis (Sections 12.2, 12.6).
+
+**Governing Constraint (restated, applied to a new context):** Consistent with Section 1.1's "human-first, crawler-friendly, not manufactured" test and Section 11.1's answer-first governing constraint, GEO structural discipline must never distort content to game generative-retrieval systems — no keyword-stuffing disguised as "LLM-friendly" phrasing, no artificially repeated entity mentions purely to increase retrieval-match probability. Every mechanism in this section strengthens the same content already validated for human readers and traditional/answer-engine crawlers; it does not create a parallel, machine-only content layer.
+
+### 12.2 LLM Readability Architecture
+
+**Definition Within This Architecture:** "LLM readability" refers to how cleanly a passage of content can be parsed and semantically understood when retrieved as an isolated chunk (a "document" in RAG-pipeline terms) — independent of the surrounding page chrome, navigation, or visual layout that a human browsing the live page would use for context.
+
+**Primary Mechanism — `RichContentBlock` as a Natural Chunking Boundary:** The discriminated-union structure of `RichContent` (Phase 5B §4.5) — already justified for AEO purposes in Section 11.6 — serves a second, distinct purpose here: each `RichContentBlock` (`paragraph`, `heading`, `list`, `quote`, `image`, `codeBlock`) is a natural, well-bounded retrieval unit. A RAG-style retrieval system chunking this site's content is far more likely to produce clean, semantically coherent chunks when the underlying content is already block-structured than if it were an undifferentiated HTML blob requiring the retrieval system to guess at chunk boundaries. This is not a new requirement Section 12 introduces — it is the same structural choice already frozen in Phase 5B §4.5, now recognized as serving LLM-retrieval readability specifically, in addition to the rendering-safety and AEO purposes already documented (Section 11.6's "compounding benefit" pattern extends to a third beneficiary here).
+
+**Heading Hierarchy as Semantic Scaffolding:** Consistent with Section 1.2's "Semantic HTML" principle and the `heading` block's `level: 2 | 3 | 4` typing (Phase 5B §4.5), a strict, non-skipping heading hierarchy is what allows an LLM-retrieval system to reconstruct a passage's place within its source document's argument structure even when only a fragment is retrieved — a heading-less wall of text gives a retrieval system no signal about where one idea ends and another begins; well-nested headings do. This is architecturally already guaranteed by the `RichContentBlock` type's constrained `level` values (Phase 5B §4.5) and is restated here as the specific GEO rationale for that constraint.
+
+**Self-Contained Paragraph Discipline:** Extending Section 11.3's self-containment principle (previously scoped to `directAnswer` specifically) to `RichContent` body paragraphs generally: a paragraph that depends on an unstated antecedent from three paragraphs earlier ("this approach," "the previous method") degrades gracefully for a human reading the full page in order, but degrades badly for a retrieval system that surfaces that one paragraph in isolation. Consistent with Section 11.3's precedent, this is stated as **editorial guidance the architecture enables and encourages through its block structure**, not a mechanically-enforced build-time rule (natural-language antecedent-resolution is not a structural property this architecture can validate).
+
+### 12.3 Citation Readiness
+
+**Definition Within This Architecture:** "Citation readiness" refers to whether a piece of content, if selected by a generative system as a source for a synthesized answer, carries sufficient attached metadata for that system to correctly cite it — the author, the publication/update date, the organization, and a stable, resolvable URL.
+
+**Direct Reuse of Already-Established Metadata (no new mechanism):** Every element citation readiness requires already exists and has already been specified for other purposes:
+- **Stable, canonical URL** — Section 2.6/4.10's canonical resolution, already guaranteed unique and stable per entity.
+- **Author attribution** — `BlogPost.authorId` → `Author` entity (Phase 5B §3.7), already mandatory (no anonymous content, per Section 10.4).
+- **Publication/freshness dates** — `publishedAt`/`updatedAt` (Phase 5B §2.2), already surfaced in structured data (`BlogPosting.datePublished`/`dateModified`, Section 3.7).
+- **Organizational attribution** — the `Organization` entity (Section 3.3), already the universal `publisher` reference on every content node.
+
+**What Section 12.3 Adds — Consolidation Into a Single "Citation Bundle" Concept:** While each element above exists independently and for its own reason, this subsection names the specific *combination* of `{canonical URL, author, publisher, dateModified}` as the **citation bundle** a generative system needs to correctly attribute a synthesized answer back to this site — and confirms that this exact bundle is present on every content type carrying independent authorial value (Blog Post, Case Study) via the already-frozen JSON-LD field mappings (Section 3.7, 3.9), with no gap requiring a new field. This is the GEO-specific naming of a bundle whose individual components were each justified elsewhere; Section 12.3's contribution is confirming the bundle's *completeness* as a unit, not introducing new parts.
+
+**Non-Guaranteeable Outcome (restated from Section 11.7's honest scope boundary, applied here identically):** As with AEO attribution, this architecture cannot compel a generative system to actually cite this site when synthesizing an answer from its content — it can only ensure that *if* the system chooses to cite, or *if* the system's underlying retrieval pipeline surfaces citation metadata to the end user, the metadata available is complete and correct.
+
+### 12.4 Source Attribution Strategy
+
+**Distinguishing Section 12.4 From 12.3:** Section 12.3 addressed what a generative system needs to cite *this site's content*; Section 12.4 addresses the inverse and equally important concern — how *this site's own content* handles attribution when it references external sources (statistics, third-party claims, industry data) within Blog Posts or other Editorial content, since generative systems (and increasingly, traditional search quality signals) weight source content more favorably when it demonstrates its own citation discipline rather than making unsourced claims.
+
+**Mechanism — the `quote` Block Type:** `RichContentBlock`'s `{ type: 'quote'; text: string; attribution: string | null }` variant (Phase 5B §4.5) is the structural mechanism for this — a `quote` block's `attribution` field, when populated, is a machine-parseable signal that a specific claim within the content is sourced and attributed, distinct from the surrounding `paragraph` blocks which represent this site's own original analysis or explanation. This is not a new field introduced by Section 12 — it is the existing `quote` block, now given its GEO-specific rationale: content that clearly delineates "this is an external claim, attributed to X" from "this is our own analysis" is more useful to a generative system attempting to reason about source reliability and is more consistent with the Copyright Compliance discipline this document's own operating constraints already require (paraphrase-with-attribution over uncredited claim reproduction).
+
+**Governance Boundary (cross-reference, not a new rule):** This architecture's own content-generation practices (were this document itself ever used to inform automated content drafting) remain subject to the same copyright and attribution discipline already governing any content production — Section 12.4 does not relax or restate that discipline; it identifies the `quote` block as the structural feature that makes attribution-conscious authoring *renderable and machine-legible* once an editor has already done the (out-of-architecture-scope) work of writing responsibly-sourced content.
+
+**No Independent Citation-Tracking Model:** This architecture does not introduce a `Citation` or `Source` domain model distinct from the inline `quote` block's `attribution` string — a lightweight, inline mechanism is judged sufficient given the site's content types (marketing/educational content, not academic or journalistic long-form requiring a formal bibliography), consistent with the "no new data invented" discipline maintained since Section 9.1.
+
+### 12.5 Multi-Source Knowledge Integration
+
+**The Distinct GEO Concern This Subsection Addresses:** A generative system synthesizing an answer about, for example, "how does AEO differ from traditional SEO" may retrieve and blend passages from this site's `/services/aeo` page, one or more Blog Posts, and a relevant FAQ Item — successfully synthesizing a coherent answer requires that these separately-retrieved passages **agree with one another** and **reinforce rather than contradict** each other's claims, since the generative system has no independent means of resolving a contradiction between two passages from the same site.
+
+**Primary Mechanism — the Entity/Relationship Graph Already Established (Sections 9, 10, 11.8):** This is not a new risk requiring a new mechanism — it is the multi-page generalization of the consistency guarantees already built for entity identity (Section 9.8), trust signals (Section 10.8), and answer consistency (Section 11.8). Where those sections guarded consistency for a *specific entity's* identity or a *specific question's* answer, Section 12.5 names the aggregate outcome: because every content type's claims trace to the same underlying Phase 5B relationship fields (`BlogPost.relatedServiceId`, `Service.faqItems`, etc.), and because those relationships are validated for referential integrity at build time (Phase 5B §5.5), the content graph a generative system would retrieve from is already structurally coherent — multi-source integration risk is mitigated by the same single-source-of-truth discipline maintained since Phase 5B §1, not by a mechanism newly introduced here.
+
+**The One Genuine Multi-Source-Specific Risk — Temporal Drift Across Related Content:** A risk not fully covered by prior sections: a Blog Post published eighteen months ago and a Service page updated last month, both discussing the same topic, could drift apart in accuracy purely due to time (the Blog Post reflecting an outdated understanding the Service page has since corrected) — a real risk distinct from the *structural* contradiction risk Sections 9–11 already address, because both passages may be individually well-formed and internally consistent, yet mutually stale relative to one another. This architecture's mitigation is the `relatedServiceId`/`relatedPostIds` linking (Section 7.3–7.4) combined with the `updatedAt` freshness signal (Section 10.5) — a generative system weighting `dateModified` appropriately (Section 12.3's citation bundle) has the *information* needed to prefer the more recently updated source, but this architecture cannot compel a retrieval system to apply that weighting correctly; it can only ensure the freshness signal is present and accurate (already guaranteed per Phase 5B §2.2).
+
+### 12.6 Context Preservation
+
+**The Core Problem This Subsection Names:** A passage extracted from this site by a generative retrieval system loses its surrounding page context (the page's title, its entity association, its breadcrumb position) unless that context is either (a) embedded within the passage itself, or (b) available through structured data the retrieval system separately ingests alongside the passage. Section 12.6 specifies which of these two paths this architecture relies on for which content type.
+
+**Structured-Data-Carried Context (primary path):** For the majority of content, this architecture relies on path (b) — the JSON-LD graph (Section 3) traveling alongside the page's HTML already carries the entity context (which Service/Industry/Location this content relates to, via the entity-defining and contextual relationships cataloged in Sections 9.4 and 7.4) that a well-built retrieval pipeline would ingest together with the page's prose content. This is the same graph already fully specified; Section 12.6 does not add to it, but confirms its role here as the primary context-preservation mechanism for generative retrieval specifically.
+
+**Self-Contained-Passage Path (secondary, reinforcing path):** For the specific fields already engineered for extraction-in-isolation — `directAnswer` (Section 11.3), FAQ `answer` (Section 11.5) — this architecture additionally relies on path (a): these fields' self-containment requirement (already established, Section 11.3) means that *even if* a retrieval system ingests only the raw text without any accompanying structured data, the passage itself still carries enough restated context (naming the topic/entity within the answer's own wording, per the self-containment principle) to remain meaningful. This dual-path redundancy — structured data for well-built pipelines, self-contained wording for naive ones — is a deliberate defense-in-depth choice, not an accidental overlap.
+
+**No Reliance on Visual/Layout Context:** Consistent with Section 1.2's "Semantic HTML" principle, this architecture never relies on visual positioning, color, or layout proximity to convey context that isn't also present in the underlying markup/data — a generative retrieval system operating on extracted text or a text-focused DOM traversal receives the same context a screen reader would (Section 1.2's Accessibility principle), which is the same design discipline already guaranteeing this property, applied here to a new consumer class rather than requiring new work.
+
+### 12.7 AI Retrieval Readiness
+
+**Consolidation Point, Mirroring Section 11.7's Structure:** As Section 11.7 named the closed set of mechanisms constituting AEO extraction-readiness, this subsection names the closed set constituting GEO/LLM-retrieval readiness — confirming, once again, that no additional mechanism beyond what has already been documented is required.
+
+**The Retrieval-Readiness Stack:**
+
+| Layer | Mechanism | Prior Reference |
+|---|---|---|
+| Crawl/render access for retrieval-affiliated crawlers | Section 5.7's "Answer-engine/LLM-product crawlers" category, allowed by default | Section 5.7 |
+| Clean chunking boundaries | `RichContentBlock` structure, heading hierarchy | Section 12.2, Phase 5B §4.5 |
+| Self-contained passages | `directAnswer`, FAQ `answer` self-containment discipline | Section 11.3, 11.5, 12.6 |
+| Citation completeness | Citation bundle (URL, author, publisher, dateModified) | Section 12.3 |
+| Attribution discipline for external claims | `quote` block's `attribution` field | Section 12.4 |
+| Cross-page coherence | Entity/relationship referential integrity | Section 12.5, 9.8, 10.8, 11.8 |
+| Context preservation | JSON-LD graph + self-contained wording (dual path) | Section 12.6, Section 3 |
+
+**Governing Observation (restated from Section 11.7's precedent):** Every row traces to a mechanism already justified in an earlier section for its own primary purpose. Section 12.7's contribution, like Section 11.7's, is the explicit certification that these mechanisms compose into complete GEO-readiness without requiring a distinct, parallel content or data layer built specifically and only for generative-AI consumption — directly reinforcing Section 12.1's framing of GEO as an *extension* of, not a *departure* from, everything already built.
+
+**Training-Corpus Inclusion — Explicitly Out of This Architecture's Control:** Distinct from live retrieval-time access (governed by Section 5.7's crawler-permission decision), whether this site's content is incorporated into a given model's *training corpus* is a decision made by model developers on their own timeline and criteria, entirely outside this architecture's influence beyond the same crawl-permission signal already addressed in Section 5.7's third crawler category (general-purpose training crawlers, flagged there as an open business decision). Section 12.7 does not introduce a separate mechanism for training-corpus optimization, since none would be meaningfully actionable at the technical-architecture level beyond what Section 5.7 already specifies.
+
+### 12.8 Cross-Page Generative Consistency
+
+**Direct Extension of Sections 9.8, 10.8, and 11.8:** Following the established pattern, this subsection confirms the generative-consistency guarantee as a named, validatable property: because Sections 9 through 12 all draw their consistency guarantees from the identical underlying mechanism (single-source-of-truth entity records, Phase 5B §1's Principle 3, and referential-integrity validation, Phase 5B §5.5), a generative system retrieving and synthesizing across multiple pages of this site encounters a content graph that is consistent not just page-by-page (as Sections 9–11 each confirmed for their own concern) but **in aggregate**, across however many passages a synthesis pipeline chooses to draw from.
+
+**The Distinction From Section 12.5:** Section 12.5 addressed the *risk* of multi-source contradiction and its mitigation; Section 12.8 states the resulting *guarantee* as a property of the system, parallel to how Sections 9.8/10.8/11.8 each stated their respective guarantees — this is the GEO-scoped restatement completing that four-part pattern (identity consistency, trust consistency, answer consistency, generative/multi-source consistency), not a new mechanism.
+
+**The One Acknowledged Residual Gap (restated honestly from Section 12.5):** The temporal-drift risk identified in Section 12.5 — content that is individually valid but has drifted out of sync with more recently updated related content — remains the one form of cross-page inconsistency this architecture mitigates (via freshness signals, Section 10.5/12.3) but does not fully eliminate, since eliminating it entirely would require either an automated content-consistency-checking system beyond this document's scope (a content-operations tooling concern, not a data/rendering architecture concern) or a level of editorial vigilance this technical document cannot enforce. This is stated plainly rather than glossed over, consistent with this document's practice (Section 11.7, 11.8) of naming real scope boundaries rather than overclaiming completeness.
+
+### 12.9 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 11.9:
+
+1. **`RichContentBlock` Structural Well-Formedness Check (extends Phase 5B §5.1's general schema validation to a GEO-specific concern):** Build-time validation confirms no `RichContent` array contains a heading-level skip (e.g., an `h2` immediately followed by an `h4` with no intervening `h3`) — a structural check protecting the semantic-scaffolding guarantee Section 12.2 relies on, distinct from Phase 5B's general content-shape validation, which does not currently check inter-block sequencing.
+2. **Citation Bundle Completeness Check (extends Section 10.9's Author-completeness check to the full bundle):** Confirms every `PUBLISHED` Blog Post and Case Study resolves a complete citation bundle (Section 12.3) — valid canonical URL, resolvable author, resolvable publisher, valid `dateModified` — as a build-time failure if any component is missing, since an incomplete bundle undermines the specific GEO guarantee Section 12.3 exists to make.
+3. **`quote` Block Attribution Presence Lint (extends Section 12.4, warning-tier per the established precedent for judgment-calibrated conditions):** Flags any `quote` block with a `null` `attribution` field for editorial review — not a hard failure, since a `quote` block might occasionally represent an internal/anonymous stylistic quotation rather than an external sourced claim, but a pattern worth surfacing given Section 12.4's attribution-discipline rationale.
+4. **Cross-Reference to Section 12.5's Referential Integrity (restates Phase 5B §5.5, confirmed in GEO-validation scope):** The same build-time referential-integrity sweep already established restates its relevance here — Section 12.9 does not duplicate that check, only confirms it is the mechanism satisfying Section 12.5's multi-source-coherence mitigation, consistent with how Section 11.9 confirmed pre-existing checks' relevance to AEO without reimplementing them.
+5. **Self-Containment Spot-Check (extends Section 11.9's precedent, warning-tier):** A lightweight lint flags `directAnswer` or FAQ `answer` values containing likely-unresolved-antecedent language ("this," "the above," "as mentioned" without a nearby noun) — an imperfect, heuristic, non-blocking check, explicitly acknowledged as such, consistent with Section 12.2's honest framing of self-containment as encouraged-but-not-mechanically-verifiable.
+
+### 12.10 GEO Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, entity resolution, E-E-A-T resolution, and AEO
+resolution (Sections 2.12 through 11.10) — memoized, zero
+additional fetch
+        │
+        ▼
+Does the current entity carry independently-citable content
+(Blog Post, Case Study — content types with author/date
+attribution) or RichContent body requiring chunking-readiness
+checks?
+        │
+   ┌────┴────┐
+  yes         no (e.g., Navigation, CTA, taxonomy-only pages)
+   │           │
+   ▼           ▼
+Resolve citation bundle (Section 12.3)     GEO resolution step
+— reuses already-resolved canonical URL,   is a no-op; page
+author, publisher, and updatedAt values    proceeds through
+from Sections 2, 3, 10 — no new fetch      Sections 2–11's
+   │                                        flow unaffected
+   ▼
+RichContentBlock sequence already rendered
+per its established path (Section 11.10) —
+this flow adds only the heading-sequence
+and quote-attribution validation checks
+(Section 12.9), not a new rendering pass
+   │
+   ▼
+Entity/relationship graph already resolved
+and validated for referential integrity
+(Phase 5B §5.5, Sections 9, 11.8) — Section
+12.5/12.8's multi-source coherence guarantee
+is confirmed, not separately computed, here
+   │
+   ▼
+Build-time validation suite executed
+(Section 12.9)
+   │
+┌──┴──┐
+fail   pass (or warning-only, per checks
+ │      3 and 5's severity calibration)
+ ▼       │
+BUILD    Page deployed with GEO-readiness
+FAILS    signals consistent with every prior
+(heading  section's output — no independent
+skip,     cache or regeneration cycle beyond
+incomplete what Sections 2–11 already established
+citation
+bundle)
+```
+
+**Key Property, Consistent with Sections 2.12 through 11.10:** GEO architecture, like AEO before it, introduces no new fetch and no new cache lifecycle. Unlike AEO (which added one genuinely new structural discipline — `directAnswer` positioning), GEO adds **zero** new domain fields or structural requirements beyond what Sections 3, 9, 10, and 11 already established — its entire technical contribution is (a) reframing already-existing mechanisms (block structure, citation metadata, entity consistency) through the specific lens of multi-source, context-stripped retrieval (12.2–12.6), (b) certifying their compositional sufficiency (12.7), and (c) adding two narrow, genuinely new validation checks — heading-sequence integrity and citation-bundle completeness (12.9) — that did not previously exist as named build-time gates. This is the smallest incremental architectural footprint of any section since Section 9, consistent with Section 12.1's framing of GEO as an extension rather than a new system.
+
+---
+
+**End of Section 12 — Generative Engine Optimization (GEO) Technical Architecture.**
+
+Ready to proceed to the next section (Core Web Vitals / Performance Architecture) on your instruction.
+
