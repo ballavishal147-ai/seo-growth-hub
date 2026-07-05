@@ -1996,3 +1996,754 @@ bundle)
 
 Ready to proceed to the next section (Core Web Vitals / Performance Architecture) on your instruction.
 
+Sections 1–12 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 13.
+
+---
+
+# 13. Core Web Vitals & Performance Architecture
+
+### 13.1 Performance Philosophy
+
+Performance in this architecture is treated exactly as Section 1.2 originally framed it: a search-relevance signal co-equal with crawlability and structured data, not a separate optimization pass applied after functional completeness. This section does not introduce a new performance program — it consolidates and gives full technical specification to commitments already made piecemeal across Phase 5A (§9.1, §10, §7) and this document (Sections 1.4 Goal 7, 6.5, 11.6). Every mechanism specified here inherits the SSG-first Rendering Strategy (Phase 5A §3) as its foundation: because the overwhelming majority of pages are pre-rendered static HTML served from CDN edge (Phase 5A §7.2), this architecture's performance work is concentrated on **what happens after that HTML arrives at the browser** — asset weight, render-blocking behavior, and script execution — rather than on server response time, which SSG already solves structurally.
+
+**Governing Constraint:** No SEO, AEO, GEO, or E-E-A-T mechanism specified in Sections 2–12 may be implemented in a way that regresses Core Web Vitals — this was already stated as Architectural Goal 7 (Section 1.4) and as an explicit constraint on structured-data payload size (Section 3.7's decision to omit `articleBody` from JSON-LD). Section 13 is where that constraint receives its own complete, dedicated specification rather than being scattered across other sections' asides.
+
+### 13.2 Core Web Vitals Targets
+
+Consistent with PRD §9.1 and §11.4 (already-approved success criteria), this architecture targets the "Good" threshold band for all three Core Web Vitals metrics, treated here as build-verifiable engineering targets rather than post-launch aspirations:
+
+| Metric | Target | Primary Architectural Owner |
+|---|---|---|
+| **Largest Contentful Paint (LCP)** | ≤ 2.5s | Section 13.5 (hero image priority), Section 13.3 (SSG delivery) |
+| **Interaction to Next Paint (INP)** | ≤ 200ms | Section 13.7 (JavaScript budget), Section 13.8 (third-party governance) |
+| **Cumulative Layout Shift (CLS)** | ≤ 0.1 | Section 13.5 (intrinsic sizing), Section 13.6 (font-loading strategy) |
+
+**Measurement Boundary:** These targets apply at the 75th-percentile field-data threshold (the standard Core Web Vitals assessment methodology), measured via the Monitoring Strategy already established in Phase 5A §9 (GA4, and Search Console's own Core Web Vitals reporting) — this section does not introduce a separate measurement mechanism; it specifies the architecture that makes hitting these already-adopted targets structurally likely rather than aspirational.
+
+### 13.3 Rendering Performance Strategy
+
+**Inheritance, Not Reinvention:** The Rendering Strategy table (Phase 5A §3) already assigns every route category to SSG, SSG+ISR, or the one `dynamicParams: true` exception — this remains entirely unmodified. Section 13.3's contribution is narrower: specifying the **within-page** rendering-performance disciplines that apply once a given route's HTML has been generated and cached.
+
+**Server Component Default, Client Boundary as Exception (restated from Phase 5A §3.3, given its performance rationale here):** Because client-side JavaScript execution is the primary lever affecting INP (Section 13.2), and because Phase 5A §3.3 already restricts `"use client"` boundaries to genuinely interactive components (mega-menu, mobile drawer, form validation, search overlay, FAQ accordion, testimonial carousel controls, toast notifications) — every page's static content (the substantial majority of any Service, Blog, Case Study, or Location page's DOM) ships as zero-JavaScript server-rendered markup by construction. Section 13.3 confirms this boundary is also this architecture's primary INP-protection mechanism, not merely a rendering-model preference.
+
+**Streaming and Progressive Rendering:** Where a page includes a client-island component with its own data dependency (rare, given Section 4's fetch-strategy discipline already routes most data through the memoized Content Service call), React Server Components' native streaming capability allows above-the-fold static content to reach the browser and become visible before any client-hydrated island completes — directly supporting the LCP target (13.2) by ensuring the largest above-the-fold element (typically the hero image, Section 13.5) is never blocked behind a slower-resolving interactive component elsewhere on the page.
+
+**loading.tsx as a Perceived-Performance Mechanism (restates Phase 5A §5.5, confirmed in scope here):** The Skeleton Loading System (Design System Phase 4 §22) applied via colocated `loading.tsx` boundaries governs the transition *between* routes (client-side navigation), not the initial SSG page load itself — relevant to INP-adjacent perceived responsiveness during in-app navigation, distinct from the LCP/CLS concerns governing first-load performance.
+
+### 13.4 Asset Optimization
+
+**Governing Principle:** Every static asset (CSS, JavaScript bundles, fonts, icons) is subject to the same discipline already established for images (Phase 5A §10) and caching (Phase 5A §7.1, §7.5): fingerprinted, immutably-cacheable, and minimized in payload size by default, not as a manual per-release optimization task.
+
+**CSS Delivery:** Given the Tailwind CSS foundation (Phase 5A §2, Design System Phase 4 §29's token mapping), only the utility classes actually referenced across the codebase are included in the shipped stylesheet (Tailwind's build-time purge behavior operating on the final component set) — meaning CSS payload scales with actual usage, not with the full token vocabulary defined in the Design System (Phase 4 §28), which is deliberately large and comprehensive but not fully shipped to every page.
+
+**Icon Delivery (extends Design System Phase 4 §9):** Icons render as inline SVG (inheriting `currentColor`, per Design System §9) rather than an icon font or a sprite-sheet image request — eliminating a categorically separate asset-loading concern (icon fonts historically introduced their own CLS and render-blocking risks) by construction, since inline SVG ships as part of the component markup itself with zero additional network request.
+
+**Bundle Splitting:** Client-island components (Section 13.3) are code-split per route by Next.js's native bundling behavior — a page containing a FAQ accordion does not load the Search Overlay's client-side bundle, and vice versa, keeping each route's JavaScript payload scoped to only the interactive components genuinely present on that page.
+
+### 13.5 Image Optimization
+
+**Full Inheritance from Phase 5A §10, Extended With CLS-Specific Discipline:** Format negotiation (AVIF/WebP/fallback), blur placeholders, responsive `sizes`, and lazy-loading rules were already fully specified in Phase 5A §10 — Section 13.5 does not restate that specification; it adds the two performance disciplines Phase 5A §10 named but did not fully elaborate: **intrinsic sizing** and **priority governance**, both direct levers on the CLS and LCP targets (Section 13.2).
+
+**Intrinsic Sizing as CLS Prevention:** Every `MediaAsset` (Phase 5B §3.17) carries mandatory `width` and `height` fields — already required at the domain-model level "for `next/image` intrinsic sizing, CLS prevention" per that field's own original justification. Section 13.5 confirms this is the primary mechanism preventing layout shift as images load: because the browser reserves the correct aspect-ratio space before the image itself arrives (using the `width`/`height` values present in the initial HTML, not discovered only after image load), CLS from image loading is structurally prevented rather than mitigated after the fact.
+
+**Priority Governance (restates and enforces Phase 5A §10.5's rule):** Exactly one image per page carries `priority` (eager-load) treatment — the single largest above-the-fold element, per Phase 5A §10.5's existing "no page may mark more than one image `priority`-loaded" governance rule. Section 13.5 confirms this rule's direct LCP consequence: a page with zero `priority`-marked images risks a delayed LCP (the largest element competing for load priority with everything else); a page with multiple `priority`-marked images dilutes the browser's prioritization signal, potentially delaying the genuinely largest element behind a falsely-equal-priority smaller one. Exactly one is the LCP-optimal configuration, not an arbitrary constraint.
+
+### 13.6 Font Strategy
+
+**Governing Concern:** Web font loading is a common, under-specified source of both CLS (layout shift when a fallback font is swapped for the final font, altering text metrics) and LCP delay (if font loading blocks text rendering) — this subsection gives font loading the same architectural rigor already applied to images.
+
+**Self-Hosted, Not Third-Party-Requested:** Fonts (Design System Phase 4 §4.1's Display/Body/Mono families) are served from this site's own origin/CDN (Phase 5A §7.5's static-asset caching treatment already covers fonts), not fetched from a third-party font-hosting service at request time — eliminating an additional DNS lookup/connection-negotiation round-trip that a third-party font host would introduce, and removing a dependency on that third party's own uptime/performance for a metric (LCP/CLS) this architecture is directly accountable for.
+
+**`font-display` Behavior:** Font loading uses a `swap`-equivalent strategy (text renders immediately in a fallback font, swapping to the final font once loaded) rather than blocking text rendering until the custom font arrives — this favors LCP (text is visible immediately) at the cost of a controlled, minimized CLS risk at swap time, which is mitigated by the next mechanism.
+
+**Font-Metric Matching to Minimize Swap-Induced CLS:** Where the Display/Body typeface selection (Design System Phase 4 §4.1) differs metrically from common system fallback fonts, a metrically-adjusted fallback font declaration (matching x-height/line-height as closely as possible to the final webfont) is used specifically so the `swap` transition (above) produces minimal-to-no visible reflow — this is the specific mechanism that makes the `swap` strategy's LCP benefit (immediate text visibility) compatible with the CLS target (13.2), rather than trading one metric's improvement for the other's regression.
+
+### 13.7 JavaScript Budget
+
+**Governing Principle, Direct Consequence of Section 13.3:** Because static content ships with zero JavaScript by construction (Server Components default), the JavaScript budget this architecture manages is scoped entirely to the enumerated set of client-island components already named in Phase 5A §3.3 — this is a closed, known set, not an open-ended, page-by-page accumulation risk.
+
+**Per-Component Budget Discipline:** Each client-island component (mega-menu, mobile drawer, form validation, search overlay, FAQ accordion, testimonial carousel, toast notifications) is code-split (Section 13.4) and loaded only on the routes where it is genuinely rendered — meaning a page's total JavaScript payload is the sum of only the interactive components actually present on that specific page, never the full site-wide interactive-component library.
+
+**Third-Party Exclusion From This Budget (bridges to Section 13.8):** Analytics and monitoring scripts (GA4, Clarity, future Sentry — Phase 5A §9, Phase 5B §8.5) are deliberately excluded from the client-island JavaScript budget described above and governed separately (Section 13.8), because their loading/execution characteristics and risk profile differ categorically from first-party interactive components — first-party components are code-reviewed and directly controlled; third-party scripts are not.
+
+**No Client-Side Data Fetching for Content Already Available Server-Side:** Consistent with the "components consume content, they do not fetch it" principle (Phase 5B §1, Principle 4, Section 4.7), no client-island component re-fetches content already resolved server-side by the Content Service — a FAQ accordion's questions/answers arrive as server-rendered props, not as a client-side fetch the accordion component issues on mount; this eliminates an entire category of INP-degrading, waterfall-inducing client-side network activity by construction.
+
+### 13.8 Third-Party Script Governance
+
+**Direct Extension of Phase 5A §9.1/§9.3's Existing Rule:** Phase 5A already established that GA4 and Clarity are "loaded via a performance-conscious strategy (deferred/async script loading) so analytics instrumentation never competes with Core Web Vitals commitments." Section 13.8 gives this rule its complete architectural specification.
+
+**Loading Strategy — Deferred, Never Render-Blocking:** Every third-party script (GA4, Clarity, and — once activated per its readiness posture, Phase 5A §9.4 — Sentry) loads via a non-blocking strategy (async/deferred script loading, or Next.js's native third-party-script-loading optimization where applicable) that never delays First Contentful Paint or LCP — no third-party `<script>` tag is permitted in a render-blocking position in the document head.
+
+**Single-Boundary Enforcement (restates Phase 5B §8.7's Boundary Isolation Summary, applied here to performance specifically):** Because every third-party integration is already confined to exactly one boundary module (Phase 5B §8.3's inventory, §8.7's "Single Call Site" rule), there is exactly one place in the codebase where each third-party script's loading configuration is set — preventing the drift risk of the same script being loaded multiple times, or loaded with inconsistent deferral strategy, across different pages.
+
+**Non-Blocking Failure Posture, Extended to Performance:** Phase 5B §8.7 already established that third-party integration failure must never break the user-facing request it was attached to — Section 13.8 extends this to performance specifically: a slow-loading or failed third-party script must never delay or degrade the rendering of first-party content, meaning `trackEvent()` (Phase 5B §8.5) and its underlying script loads are architected as strictly additive, fire-and-forget operations relative to the page's own critical rendering path.
+
+**Governance Ceiling — No New Third-Party Script Without Boundary-Module Registration:** Consistent with Phase 5B §8.1's boundary-classification discipline, no future third-party script (a hypothetical future chat widget, a future heatmap tool beyond Clarity) may be added to the site without first being classified into the Phase 5B §8.3 inventory and given its own boundary module — preventing ad hoc, unreviewed third-party script accumulation, which is the most common real-world cause of Core Web Vitals regression on sites that are otherwise architecturally sound.
+
+### 13.9 Caching Strategy
+
+**Full Inheritance, No Modification:** Browser caching, CDN caching, ISR cache behavior, image caching, and static asset caching were fully specified in Phase 5A §7 and are unmodified here. Section 13.9's role is narrow: confirming that the SEO-specific artifacts this Phase 6 document has since added (JSON-LD graphs, Section 3; resolved metadata, Section 2; sitemap, Section 6) all inherit that same caching architecture rather than introducing independent cache behavior, since each of those sections' own generation-flow diagrams (2.12, 3.12, 6.10, etc.) already stated this explicitly. This subsection exists only to confirm no exception has crept in across Sections 2–12 — every artifact this document has specified shares the page's single cache/revalidation lifecycle, with zero independent caching mechanism introduced anywhere in Phase 6.
+
+### 13.10 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 12.9:
+
+1. **Build-Time Bundle Size Budget Check:** Each route's client-JavaScript payload (Section 13.7) is measured at build time against a defined ceiling per route category — a page whose client-island composition pushes it over budget fails the build (consistent with this document's general preference for build-time enforcement over post-launch discovery, Phase 5B §8.1's governance pattern applied here to performance).
+2. **Single-`priority`-Image-Per-Page Check (restates Phase 5A §10.5, enforced here):** Build-time validation confirms no page marks more than one image `priority` (Section 13.5) — extending Phase 5A §10's existing rule into an explicit, automated gate rather than a documented expectation alone.
+3. **Intrinsic Dimension Presence Check:** Confirms every rendered `MediaAsset` reference carries valid, non-zero `width`/`height` (Phase 5B §3.17's existing required-field validation, restated here in its CLS-prevention role) before it reaches the rendering layer.
+4. **Third-Party Script Registration Check (extends Phase 5B §8.7 to performance governance):** Confirms every third-party script present in the built output corresponds to an entry in the Phase 5B §8.3 boundary-module inventory — catching any unregistered, ungoverned script addition before it reaches production.
+5. **Field-Data Threshold Monitoring (post-launch, cross-reference to Phase 5A §9):** Ongoing Core Web Vitals field-data assessment via the already-established GA4/Search Console monitoring stack (Phase 5A §9.1–9.2) — not a build-time check, but the closing-the-loop mechanism confirming the build-time architectural guarantees above actually translate into real-user performance outcomes, consistent with PRD §11.4's existing success-criteria framing.
+
+### 13.11 Performance Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, entity resolution, E-E-A-T, AEO, and GEO resolution
+(Sections 2.12 through 12.10) — memoized, zero additional fetch
+        │
+        ▼
+Static content rendered server-side, zero JavaScript by default
+(Section 13.3) — client-island boundaries (Section 13.7) hydrate
+independently, code-split per route (Section 13.4)
+        │
+        ▼
+Image references resolved: format negotiation, blur placeholder,
+intrinsic width/height (Section 13.5) — exactly one priority-
+marked image identified per page
+        │
+        ▼
+Font loading strategy applied: self-hosted, swap-equivalent
+display behavior, metric-matched fallback (Section 13.6)
+        │
+        ▼
+Third-party scripts (GA4, Clarity) attached via deferred,
+non-blocking loading (Section 13.8) — strictly additive to the
+critical rendering path
+        │
+        ▼
+Build-time validation suite executed (Section 13.10)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Page deployed to CDN edge (Phase 5A §7.2),
+(bundle       cached per the identical lifecycle already
+oversize,     established for content, metadata, structured
+multiple      data, canonical, robots, sitemap, internal links,
+priority      breadcrumbs, and every other SEO artifact in
+images,       Sections 2–12 — performance is not an independent
+missing       cache tier, but the delivery-quality property of
+dimensions,   that same single generation-and-cache pipeline
+unregistered
+script)
+        │
+        ▼
+Post-launch: field-data Core Web Vitals monitored via GA4/Search
+Console (Phase 5A §9), closing the loop against Section 13.2's targets
+```
+
+**Key Property, Consistent with Sections 2.12 through 12.10:** Performance architecture introduces no new fetch and no new cache lifecycle — it is the delivery-quality discipline applied to the exact same single generation pass every prior Phase 6 section has already described. Section 13's distinguishing feature relative to Sections 9–12 is that its validation checks (13.10) are the first in this document to be **quantitative build-gates** (bundle-size ceilings, image-count rules) rather than primarily structural/referential-integrity checks — a natural consequence of performance being a measurable resource-budget concern rather than a data-consistency concern, while remaining governed by the identical build-time-enforcement philosophy established since Phase 5B §5.5.
+
+---
+
+**End of Section 13 — Core Web Vitals & Performance Architecture.**
+
+Ready to proceed to the next section (Image SEO Architecture) on your instruction.
+
+Sections 1–13 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 14.
+
+---
+
+# 14. Image SEO Architecture
+
+### 14.1 Image SEO Philosophy
+
+Image SEO in this architecture is not a distinct content-production concern requiring new fields — it is the search- and accessibility-facing consolidation of mechanisms already fully specified across the `MediaAsset` domain model (Phase 5B §3.17), the Image Delivery Strategy (Phase 5A §10), and the Performance Architecture (Section 13.5). Consistent with the pattern established in Sections 9–12, this section introduces no new data and no new fetch path; it names the existing mechanisms specifically through an image-discoverability lens and specifies the handful of genuinely new rules (file naming, Section 14.4; the `ImageObject` structured-data mapping, Section 14.7) that no prior section has yet addressed.
+
+**Governing Constraint (restated, applied here):** Every image-SEO mechanism specified in this section must remain fully subordinate to the Performance Architecture's targets (Section 13.2) and the Accessibility discipline already frozen in Design System Phase 4 §26 — an image cannot be made more discoverable at the cost of CLS, LCP, or screen-reader usability, since Section 1.2 already established Accessibility and crawlability as "the same underlying discipline viewed from two audiences," and Section 13.1 already established performance as non-negotiable relative to every other SEO mechanism in this document.
+
+### 14.2 Image Entity Model
+
+**Full Inheritance, No Modification:** The `MediaAsset` interface (Phase 5B §3.17) — `id`, `url`, `altText` (required), `width`, `height`, `type` (`PHOTO | ICON | LOGO | ILLUSTRATION`), `focalPoint` — remains the single, unmodified source of all image data in this system. Section 14.2 does not extend this model; it confirms `MediaAsset` was already designed with image-SEO requirements in mind from its original specification (mandatory `altText`, explicit dimensions), meaning this section's role is organizational and rule-setting rather than data-modeling.
+
+**Relationship to Section 13.5:** Where Section 13.5 addressed `width`/`height` and `priority` purely as performance/CLS levers, Section 14.2 confirms the same fields simultaneously serve image-SEO purposes (dimension data is a component of `ImageObject` structured data, Section 14.7) — the same compounding-benefit pattern already established repeatedly since Section 9.7.
+
+**Reference Density:** As already noted in Phase 5B §3.17's original justification ("the most widely cross-referenced entity in the domain"), `MediaAsset` is referenced by Service, Industry, Location (via testimonials), Blog Post, Case Study, Testimonial, Team Member, Author, Site Settings, and SEO Metadata — meaning every rule specified in this section applies uniformly across the entire content graph rather than to a narrow content-type subset.
+
+### 14.3 Alt Text Strategy
+
+**Restated as a Hard, Non-Negotiable Rule (from Phase 5B §3.17):** `altText` is `Required` with no exception path — "3–150 chars," enforced at the Validation Layer (Phase 5B §5.1) as a build-time failure, not a warning, for any `MediaAsset` lacking it. Section 14.3 does not soften or re-litigate this; it specifies the **content discipline** governing what makes an alt-text value genuinely useful, since the field's presence alone does not guarantee its quality.
+
+**Descriptive, Not Keyword-Stuffed:** Consistent with Section 1.1's "human-first, crawler-friendly" test and Section 7.9's Anchor Text Governance precedent (rejecting keyword-stuffed anchor text in favor of natural, accurate description), alt text describes what the image actually depicts or represents for a non-sighted user — it is never a vehicle for inserting target keywords disconnected from the image's actual content. This is a content-quality guideline this architecture encourages but cannot mechanically enforce (accuracy of description is not a build-time-checkable property), consistent with the established pattern of flagging judgment-calibrated concerns as guidance rather than hard gates (Sections 11.3, 12.2).
+
+**Context-Sensitivity by `MediaAssetType`:** The `type` field (Phase 5B §3.17) informs — though does not template — appropriate alt-text framing: a `PHOTO` (e.g., a Team Member's headshot) warrants descriptive, personal alt text; an `ICON` (e.g., a Service card's icon) warrants brief, functional alt text describing its symbolic meaning rather than its literal shape; a `LOGO` (client logos, Section 10.6) warrants the represented company's name, consistent with Phase 4 §12's existing rule ("Each logo image requires descriptive alt text (company name)"). This subsection formalizes that existing Design System rule as the general `type`-sensitive alt-text principle it always implicitly was.
+
+**Decorative-Image Exception, Explicitly Scoped:** Design System Phase 4 §18 already distinguishes "meaningful images" (requiring descriptive alt text) from "decorative images" (marked appropriately to avoid screen-reader noise). This architecture's `MediaAsset` model has no purely decorative variant among its four `type` values — every `MediaAsset` instance is treated as meaningful and content-bearing by design, since decorative-only visual flourishes (per Design Philosophy, Phase 4 §2's "restraint" principle) are not expected to be modeled as `MediaAsset` records at all; any genuinely decorative visual element would be a CSS/component-level treatment outside the content domain, not a data-modeled image requiring an alt-text exemption pathway.
+
+### 14.4 File Naming Strategy
+
+**The One Genuinely New Rule in This Section:** No prior section has specified image file-naming conventions. This architecture requires that the `url` field (Phase 5B §3.17) — specifically the filename component of that URL — be descriptive and hyphen-separated, mirroring the same slug-formatting discipline already governing every other URL-bearing field in the system (Phase 5B §2.3's Slug Rule Governance): lowercase, hyphenated, descriptive of content (e.g., `local-seo-service-icon.avif`, `jane-smith-headshot.avif`), never a non-descriptive default (a CMS-assigned random string or camera-default filename like `IMG_4821.jpg`).
+
+**Rationale, and Explicit Scope Limit:** File-name-based image discovery is a comparatively minor signal relative to alt text and structured data (Sections 14.3, 14.7) — this rule exists for completeness and low-cost consistency (since format transformation via `next/image`, Phase 5A §10, already generates derived filenames regardless), not because it is expected to independently move image-search outcomes. This is stated plainly to avoid overstating this rule's importance relative to the far more consequential mechanisms elsewhere in this section.
+
+**Enforcement Point:** Because `url` values originate from whatever CMS media-library vendor is ultimately selected (Phase 5A §2.1, still open), this rule is enforced at the Repository boundary (Phase 5B §6.1) — the same seam already responsible for normalizing vendor-specific data into this architecture's canonical shape — rather than requiring the CMS itself to enforce naming discipline, consistent with the CMS-agnosticism principle governing every other Repository-boundary transformation in this system.
+
+### 14.5 Image Metadata
+
+**Consolidation, Not New Data:** "Image metadata" in this context refers to the complete set of `MediaAsset` fields already established (Section 14.2) plus the file-naming discipline just specified (Section 14.4) — this subsection exists to confirm the metadata set is complete for image-SEO purposes without introducing further fields such as a separate caption, copyright-holder, or license field, none of which are required by any approved requirement in Phases 1–5B.
+
+**`focalPoint` as an SEO-Adjacent Field:** `MediaAsset.focalPoint` (Phase 5B §3.17, "supports responsive cropping consistency across aspect-ratio variants") was originally justified purely for responsive-design purposes (Design System Phase 4 §10); Section 14.5 notes its secondary image-SEO relevance — an image cropped consistently and sensibly across `ratio-square`/`ratio-card`/`ratio-wide` variants (Design System §10) is more likely to present the image's genuinely salient content in every context a search engine's image-preview generation might sample from, rather than an arbitrarily-cropped, potentially confusing derivative.
+
+**No EXIF/Embedded-Metadata Reliance:** This architecture does not depend on or process embedded image file metadata (EXIF geolocation, camera data, embedded copyright fields) for any SEO purpose — all image-descriptive data flows through the explicit, validated `MediaAsset` fields (Section 14.2), never through metadata embedded within the binary image file itself, which would be an untyped, unvalidated, CMS-vendor-dependent data source inconsistent with this architecture's Single Source of Truth discipline (Phase 5B §1, Principle 3).
+
+### 14.6 Responsive Image Architecture
+
+**Full Cross-Reference, No Modification:** Responsive `sizes` configuration per aspect-ratio context, card-grid-column-count-aware sizing, and hero-image eager-loading treatment were already fully specified in Phase 5A §10.3 and restated in Section 13.5. Section 14.6 adds no new responsive-delivery mechanism; its contribution is confirming that responsive delivery and image-SEO discoverability are not in tension — search engines' image-indexing systems are understood to correctly resolve `next/image`'s responsive `srcset`/`sizes` output to the single canonical high-resolution source image per `MediaAsset` record, meaning responsive delivery (a performance mechanism) does not fragment or confuse an image's SEO identity into multiple, competing indexed variants.
+
+**One `MediaAsset`, One Image Identity, Many Rendered Variants:** This is the specific architectural guarantee worth stating explicitly: although a single `MediaAsset` may be rendered at several different pixel dimensions and formats (AVIF/WebP/fallback, per Phase 5A §10.1) across different viewport contexts, it remains **one** image entity for SEO purposes — the same `altText`, the same conceptual subject matter — never treated by this architecture as several independent images requiring separate alt-text or metadata per rendered variant.
+
+### 14.7 Structured Data Image Integration
+
+**Extends Section 3, Introduces the `ImageObject` Type Explicitly:** Section 3's schema-mapping tables (§3.5–3.7, §3.9) already reference `image` properties on `LocalBusiness`, `BlogPosting`, and Case Study's `Article` nodes as plain image-URL values — Section 14.7 formalizes that these `image` properties are populated as full `ImageObject` nodes (not bare URL strings) wherever the richer type is supported by the parent schema, carrying `url`, `width`, `height` (directly from `MediaAsset`, Section 14.2), and implicitly `caption`-equivalent context via the parent node's own fields (a `BlogPosting`'s `image` needs no separate caption property, since the post's own `headline`/`description` already provide that context per Section 3.7).
+
+**No New Schema Node, Only a Richer Property Value:** This is a refinement of Section 3's existing field mappings, not a new top-level schema node — `ImageObject` here functions as a nested value within an already-specified parent node (`BlogPosting.image`, `Article.image`, `LocalBusiness`'s implicit imagery), consistent with Section 3.1's "single graph, cross-referenced by `@id`" discipline; an `ImageObject` node may itself carry an `@id` where the same image is referenced from more than one place within a single page's graph (rare, but structurally supported by the same `@id` convention already established in Section 3.11), avoiding duplicate inline image-object declarations within one graph.
+
+**Alignment With Section 12.6's Context-Preservation Path:** Because `ImageObject` nodes travel within the same JSON-LD graph already relied upon as the "primary path" for context preservation (Section 12.6), an image's structured representation carries its dimensional and identifying data to any consuming system — including generative retrieval pipelines — through the identical mechanism already established for textual entity context, rather than requiring a separate, image-specific retrieval-context pathway.
+
+### 14.8 Accessibility Alignment
+
+**Restated as a Governing, Not Competing, Concern:** Consistent with Section 1.2's foundational position that accessibility and SEO are "the same underlying discipline viewed from two audiences," this subsection confirms no image-SEO mechanism in Sections 14.2–14.7 introduces any divergence from the Accessibility Rules already frozen in Design System Phase 4 §26 — mandatory alt text (14.3) is the identical field serving both a screen reader and a crawler; intrinsic sizing (14.2, Section 13.5) prevents both CLS (a performance concern) and the disorienting layout instability that affects users with vestibular sensitivities relying on `prefers-reduced-motion`-adjacent stability expectations (an accessibility concern) — one mechanism, two beneficiaries, consistent with the compounding-benefit pattern already established throughout this document.
+
+**No Alt-Text Divergence Between Consumption Contexts:** An image's `altText` value is identical whether rendered for a sighted crawler-simulation context, a screen-reader user, or an `ImageObject` structured-data property (Section 14.7) — there is exactly one alt-text value per `MediaAsset` (Section 14.2), never a context-specific variant, directly extending Section 5.2 Principle 1's "indexability is a property of the resource, not the request" discipline to image description specifically: no cloaking, no crawler-specific alt-text variation.
+
+### 14.9 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 13.10:
+
+1. **Mandatory Alt Text Enforcement (restates Phase 5B §5.1, confirmed in image-SEO scope):** Every `MediaAsset` fails build-time validation without a populated, 3–150 character `altText` — already an existing hard gate; Section 14.9 confirms its image-SEO relevance rather than re-deriving it.
+2. **File Naming Convention Check (new, per Section 14.4):** Build-time validation confirms every `MediaAsset.url`'s filename component is lowercase, hyphen-separated, and non-generic (flagging camera-default or purely numeric/random filenames) — a warning-tier check, consistent with this document's established pattern of treating naming/descriptive-quality concerns as guidance rather than hard failures when the underlying data source (CMS-assigned filenames, Section 14.4) is not fully within this architecture's direct authoring control.
+3. **Intrinsic Dimension Presence (restates Section 13.10, confirmed in image-SEO scope):** Confirms non-zero `width`/`height` on every referenced `MediaAsset`, serving both the CLS-prevention purpose already validated in Section 13.10 and the `ImageObject` structured-data completeness this section requires (Section 14.7).
+4. **`ImageObject` Field Completeness Check (extends Section 3.13's structured-data validation to the image-specific mapping):** Confirms every generated `ImageObject` node carries valid `url`, `width`, and `height` — a build-time failure if any is missing, consistent with Section 3.13's general structured-data conformance discipline now applied to this section's specific node type.
+5. **Alt-Text/Type Sensitivity Lint (extends Section 14.3, warning-tier):** Flags likely-mismatched alt text for `LOGO`-type assets lacking any resemblance to a company-name pattern, or `ICON`-type assets carrying implausibly long, over-descriptive alt text inconsistent with Section 14.3's "brief, functional" guidance for that type — an imperfect, heuristic check acknowledged as such, consistent with this document's honest treatment of natural-language-quality checks throughout (Sections 11.9, 12.9).
+
+### 14.10 Image SEO Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, entity, E-E-A-T, AEO, GEO, and performance
+resolution (Sections 2.12 through 13.11) — memoized, zero
+additional fetch; MediaAsset references already resolved as
+part of each parent entity's own fetch (Phase 5B §6.2)
+        │
+        ▼
+For each referenced MediaAsset: altText, width, height, type,
+and (derived) filename discipline already validated at the
+Repository/build boundary (Section 14.9) — no separate
+per-image fetch introduced here
+        │
+        ▼
+Responsive delivery applied per Phase 5A §10 / Section 13.5
+(format negotiation, sizes, priority governance) — unchanged
+        │
+        ▼
+ImageObject structured-data value constructed (Section 14.7)
+from the identical MediaAsset fields, nested within the
+already-established parent schema node (BlogPosting.image,
+Article.image, etc. — Section 3.7/3.9) — no independent
+image-schema generation pass
+        │
+        ▼
+Build-time validation suite executed (Section 14.9)
+        │
+   ┌────┴────┐
+  fail       pass (or warning-only, per checks 2 and 5's
+   │           severity calibration)
+   ▼             │
+BUILD FAILS      Page deployed with image-SEO signals
+(missing alt      consistent across rendered markup,
+text, missing      structured data, and accessibility
+dimensions,        tree — sharing the identical cache/
+incomplete         revalidation lifecycle already
+ImageObject)       established across Sections 2–13
+```
+
+**Key Property, Consistent with Sections 2.12 through 13.11:** Image SEO architecture introduces no new fetch, no new cache lifecycle, and — apart from the file-naming convention (Section 14.4) and the explicit `ImageObject` structured-data mapping (Section 14.7) — no genuinely new rule beyond what Phase 5B §3.17, Phase 5A §10, and Section 13.5 already established. This section's primary contribution is consolidation: confirming that alt text, dimensions, and structured-data image representation are already a complete, mutually-reinforcing image-SEO system by virtue of decisions frozen earlier, and closing the two narrow gaps (naming, `ImageObject`) those earlier sections left unaddressed.
+
+---
+
+**End of Section 14 — Image SEO Architecture.**
+
+Ready to proceed to the next section (Open Graph / Social Metadata Architecture — noting Sections 2.7–2.8 already cover core Open Graph resolution, so the next section would extend rather than duplicate that work) on your instruction.
+
+
+Sections 1–14 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 15.
+
+---
+
+# 15. Open Graph & Social Metadata Architecture
+
+### 15.1 Social Metadata Philosophy
+
+Sections 2.7 and 2.8 already established the core resolution mechanism for Open Graph and Twitter/X Card metadata — the tier-fallback chain (Section 2.2), field-by-field resolution table (Section 2.7), and the "thin derivation" relationship between Twitter Card fields and their Open Graph source (Section 2.8). Section 15 does not restate or duplicate that resolution logic. Its purpose is to specify the parts of the social-metadata surface Section 2 explicitly deferred or only partially addressed: **dynamic OG image generation**, **content-type-specific social framing**, and the **validation/consistency guarantees** that make social metadata production-ready at scale across seventeen content types.
+
+**Governing Position:** Social metadata is treated as a **distinct consumption context of already-resolved data**, not a parallel authoring surface — every value a social platform's crawler reads (title, description, canonical, image) is sourced from the identical Section 2.2 tier chain and the identical `SEOMetadata` value object (Phase 5B §3.16). Section 15's distinct concern is that social platforms consume this data differently than a search crawler does: they fetch a page once, cache the scraped result aggressively (often for days or weeks, per each platform's own crawler behavior), and render a static preview card — meaning correctness *at first fetch* matters more here than in almost any other consumption context this document has addressed, since a wrong value is not merely a missed opportunity but a potentially long-lived, hard-to-correct public artifact (a stale or incorrect shared-link preview).
+
+### 15.2 Open Graph Architecture
+
+**Restated Boundary (from Section 2.7, not modified):** `og:title`, `og:description`, `og:url`, `og:type`, `og:site_name` resolve exactly as Section 2.7 specifies — reused values from Sections 2.4–2.6, with `og:image` following its own three-tier fallback (editor override → entity's own primary image → `Site Settings.organizationLogo`).
+
+**What Section 15.2 Adds — the OG-Specific Property Set Section 2.7 Did Not Enumerate:**
+
+| OG Property | Resolution | Rationale |
+|---|---|---|
+| `og:locale` | Fixed, single value (matching Section 2.10's "no multi-locale at launch" position) | Consistent with the Alternate Languages Strategy already established — a single, unmarked locale means `og:locale` is a static constant sourced from `Site Settings`, not a per-page computation |
+| `og:image:width` / `og:image:height` | Derived from the resolved `MediaAsset.width`/`height` (Phase 5B §3.17) where the source image is used directly, or from the fixed output dimensions of the dynamic OG image pipeline (Section 15.5) where generated | Social platforms use these to lay out the preview card *before* fetching the image itself in some implementations — omitting them risks a layout-shifted or incorrectly-cropped preview on the consuming platform's side, the social-metadata equivalent of the CLS concern already governing this architecture's own pages (Section 13) |
+| `og:image:alt` | Sourced from the same `MediaAsset.altText` (Phase 5B §3.17) already mandatory for every image | Reuses Section 14.3's alt-text discipline rather than introducing a parallel, OG-specific alt-text field — one more instance of this document's consistent "no new data" pattern |
+| `article:published_time` / `article:modified_time` (for `og:type: article` pages — Blog Post, Case Study) | Sourced from `publishedAt`/`updatedAt` (Phase 5B §2.2) — identical source already used for `BlogPosting.datePublished`/`dateModified` (Section 3.7) and sitemap `<lastmod>` (Section 6.5) | Confirms, rather than introduces, the freshness-signal reuse pattern already established repeatedly since Section 3.7 |
+| `article:author` (for `og:type: article` pages) | Sourced from the resolved `Author` entity's name (Phase 5B §3.7) — same source as the `Person` node in JSON-LD (Section 3.7, 3.10) | Extends Section 3.10's Person-node pattern to the OG surface specifically |
+
+**Non-Duplication Discipline:** Every row above sources from a field this document has already established and validated elsewhere — Section 15.2 introduces zero new content fields; it introduces new *OG property mappings* for data that was already flowing through the system for other purposes (JSON-LD, sitemap, canonical resolution).
+
+### 15.3 Twitter/X Card Strategy
+
+**Restated Boundary (from Section 2.8, not modified):** `twitter:card` is fixed at `summary_large_image` universally; `twitter:title`/`description`/`image` derive from the already-resolved OG values; `twitter:site` sources from `Site Settings.socialProfileUrls`.
+
+**What Section 15.3 Adds:** The one Twitter/X-specific property Section 2.8 did not address is `twitter:creator` — distinct from `twitter:site` (which identifies the *publishing organization's* account). For Blog Post and Case Study pages (the two content types carrying independent authorial attribution per Section 15.2's `article:author` row), `twitter:creator` resolves from the `Author` entity where that entity's data includes a Twitter/X handle. **Phase 5B §3.7's `Author` model does not currently define a dedicated social-handle field** — only `credentials` (a string array) and, via `linkedTeamMemberId`, `TeamMember.linkedInUrl` (Phase 5B §3.11, LinkedIn-specific). Section 15.3 therefore specifies `twitter:creator` as **omitted, not fabricated** — consistent with Section 10.1's anti-fabrication governing constraint, this architecture does not infer or construct a Twitter/X handle from other data; the property is simply absent for every Author until and unless a future Phase 5B model revision adds a dedicated field for it, which is outside this document's authority to introduce unilaterally.
+
+**Governance Note (flagged, not resolved, consistent with this document's established practice for open items):** This is analogous to how Sections 5.7 and 6.8 flagged open business/future-scope decisions rather than resolving them unilaterally — `twitter:creator`'s omission is documented here as a known, deliberate gap rather than a silent oversight, should a future content-model revision wish to add author-level social-handle fields.
+
+### 15.4 Social Image Strategy
+
+**Static Fallback Chain (restates Section 2.7's `og:image` tiers, not modified):** Editor override → entity's own primary image → organization logo.
+
+**The Genuinely New Architecture — Dynamic OG Image Generation:** Where no editor-supplied `ogImage` exists and the entity's own primary image (a Service's `icon`, for instance — per Phase 5B §3.1, typically a small icon-type asset, Section 14.2's `type: ICON`) is unsuitable for social-card presentation at large size, a **programmatically generated OG image** is produced instead of falling through directly to the generic organization logo (Section 2.7's Tier 3). This is the one mechanism this section introduces that has no prior-section precedent.
+
+**Generation Inputs:** The dynamic OG image is composed at build time (for SSG routes) or on-demand (for the Location `dynamicParams: true` exception, Phase 5A §3.2) from already-resolved, already-validated data — the entity's resolved title (Section 2.4), a brand-consistent background/layout drawn from the Design System's token set (Phase 4 §28, ensuring visual consistency with the rest of the site rather than an independently-designed template), and the `Organization` logo (Phase 5B §3.15) as a consistent brand anchor. No new content field is required to drive this generation — it is a rendering-time composition of data this document has already fully specified.
+
+**Applicability — Which Content Types Use Dynamic Generation:** Content types whose primary entity image is genuinely unsuitable at large OG-card size (Service, Industry — both typically `ICON`-type assets per Phase 5B §3.1/§3.2's `icon` field) are the primary beneficiaries of dynamic generation; content types whose primary image is already a suitable `PHOTO`-type asset intended for large display (Blog Post's `featuredImage`, Case Study's `featuredImage`, both Phase 5B §3.4/§3.9) use that asset directly per Section 2.7's existing Tier 2, with dynamic generation as a fallback only if that asset is somehow unavailable.
+
+**Consistency With Section 13's Performance Constraints:** Dynamic OG image generation occurs entirely within the build/on-demand-generation pipeline already established (Phase 5A §3, Section 13.3) — it produces a static, cacheable image artifact indistinguishable in delivery characteristics from any other `MediaAsset`-derived image (Section 13.9's inherited caching architecture applies identically), never a per-request, runtime-rendered image that would introduce a request-time performance cost inconsistent with this architecture's SSG-first discipline.
+
+### 15.5 Dynamic OG Resolution
+
+**Resolution Order, Formalized:**
+
+```
+og:image resolution (extends Section 2.7's tier chain with a
+new Tier 2.5, inserted between the existing Tier 2 and Tier 3):
+
+Tier 1 — entity.seo.ogImage (editor override, Phase 5B §3.16)
+   ↓ absent
+Tier 2 — entity's own PHOTO-type primary image field
+         (featuredImage on Blog Post/Case Study)
+   ↓ absent or entity's primary image is ICON/LOGO-type,
+     unsuitable for large-format social display
+Tier 2.5 (NEW) — dynamically generated OG image (Section 15.4),
+   composed from resolved title + Design System tokens +
+   Organization logo
+   ↓ generation inputs themselves unavailable (should not occur,
+     given Site Settings.defaultSEO's build-time-guaranteed
+     non-empty status, Section 2.2)
+Tier 3 — Site Settings.organizationLogo (final fallback,
+   unchanged from Section 2.7)
+```
+
+**Why Tier 2.5 Is Inserted Rather Than Replacing Tier 2:** This preserves Section 2.7's original resolution order for the content types where it already produces the correct outcome (Blog Post, Case Study — genuine photographic featured images) while adding a purpose-built intermediate step specifically for the content types (Service, Industry) whose existing primary image was never intended for this consumption context. This is a refinement of an already-approved mechanism, not a redesign of it — Section 2.7's field-resolution table remains valid and unmodified for every row except the specific `og:image` case this subsection narrows.
+
+**Caching of Generated Images:** A dynamically generated OG image is produced once per entity (keyed to that entity's `id` and `version`, Phase 5B §4.1's kernel field) and cached identically to any other static asset (Phase 5A §7.4's image-caching architecture) — a content edit that increments `version` (Phase 5B §3.18.1) invalidates the previously generated OG image and triggers regeneration on next request/build, via the same tag-based revalidation mechanism (Section 6.6's `CONTENT_TAGS`) already governing every other entity-derived artifact in this system.
+
+### 15.6 Content-Type Mapping
+
+Consolidating Sections 15.2–15.5 into a single per-content-type reference, extending Section 2.7's `og:type` row with the full resolved social-metadata profile per type:
+
+| Content Type | `og:type` | `og:image` Source | `article:*` Properties |
+|---|---|---|---|
+| Service, Industry | `website` | Tier 2.5 dynamic generation (typical case, per Section 15.5) | Not applicable |
+| Location | `website` | Entity's own imagery where present (via Testimonial/Case Study association) or Tier 2.5 dynamic generation | Not applicable |
+| Blog Post | `article` | Tier 2 `featuredImage` (typical case) | `published_time`, `modified_time`, `author` (all populated) |
+| Case Study | `article` | Tier 2 `featuredImage` (typical case) | `published_time`, `modified_time`, `author` (author here is the Organization's editorial voice, not a named individual, since `CaseStudy` has no `authorId` field per Phase 5B §3.9 — `article:author` in this case resolves to the `Organization` entity, not a `Person`) |
+| Hub/index pages (Services, Industries, Blog, Case Studies, Locations) | `website` | Tier 2.5 dynamic generation, using the hub's own title | Not applicable |
+| Homepage | `website` | Tier 2.5 dynamic generation, or a dedicated editor-curated `ogImage` (the one page most likely to warrant deliberate editorial curation given its outsized sharing frequency) | Not applicable |
+| Legal, Conversion pages | `website` | Tier 3 organization logo (no genuine per-page image warranted for these utility page types) | Not applicable |
+
+**Case Study's `article:author` Exception, Explained:** This is a deliberate, narrow divergence from the Blog Post row worth naming explicitly: because `CaseStudy` (Phase 5B §3.9) has no `authorId`-equivalent field — case studies are institutional/editorial output, not individually-bylined content, consistent with their classification as Supporting/Relational, not Person-adjacent, data (Section 9.2's classification table) — the `article:author` OG property for this content type correctly resolves to the Organization, not a fabricated or misattributed individual author, preserving Section 10.1's anti-fabrication discipline in this specific edge case.
+
+### 15.7 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 14.9:
+
+1. **OG Image Dimension Declaration Check (extends Section 15.2's new property row):** Build-time validation confirms every resolved `og:image` — whether Tier 1, 2, 2.5, or 3 — has accompanying, accurate `og:image:width`/`height` values, including for dynamically generated images (Section 15.4), whose fixed output dimensions are known and validated at generation time rather than measured post-hoc.
+2. **Dynamic Generation Input Completeness Check:** Confirms every entity eligible for Tier 2.5 dynamic OG generation (Section 15.5) resolves a non-empty title and a valid Organization logo reference before generation is attempted — a build-time failure if either input is missing, since a partially-composed dynamic OG image would be a worse outcome than falling through cleanly to Tier 3.
+3. **`article:*` Property Presence-and-Absence Conformance Check:** Confirms `article:published_time`/`modified_time`/`author` are present for every `og:type: article` page (Blog Post, Case Study) and correctly **absent** for every `og:type: website` page — catching the specific, easy-to-introduce implementation bug of a `website`-typed page inheriting stray article-specific properties from a shared component default.
+4. **`twitter:creator` Non-Fabrication Check (extends Section 15.3):** Confirms `twitter:creator` is never populated with an inferred or guessed value — a build-time check verifying this property is either genuinely sourced from a dedicated field (not currently present, per Section 15.3) or entirely absent, with no code path permitted to construct a plausible-looking handle from an author's name or other unrelated data.
+5. **Regenerated-Image Cache-Key Consistency Check (extends Section 15.5's caching rule):** Confirms every dynamically generated OG image's cache key correctly incorporates both entity `id` and current `version` (Phase 5B §4.1) — preventing the specific failure mode of a stale generated image surviving a content update due to a cache key that only accounted for `id`.
+
+### 15.8 Social Metadata Resolution Flow
+
+```
+Route requested (build-time SSG or on-demand ISR, per Phase 5A §3)
+        │
+        ▼
+Same Content Service call already used for page body, metadata,
+structured data, canonical, robots, sitemap, internal links,
+breadcrumbs, entity, E-E-A-T, AEO, GEO, performance, and image-SEO
+resolution (Sections 2.12 through 14.10) — memoized, zero
+additional fetch
+        │
+        ▼
+Section 2.4–2.6's title/description/canonical already resolved
+— reused directly, no re-computation (Section 2.7's existing rule)
+        │
+        ▼
+og:image resolution walks the extended Tier 1 → 2 → 2.5 → 3
+chain (Section 15.5)
+        │
+   ┌────┴─────────────┬─────────────────┐
+ Tier 1/2 hit        Tier 2.5 needed    Tier 3 fallback
+ (editor override    (Service/Industry/  (logo only)
+ or suitable          hub-type pages)
+ featured image)          │
+   │                      ▼
+   │                 Dynamic OG image composed from
+   │                 resolved title + Design System
+   │                 tokens + Organization logo;
+   │                 cached keyed to {entityId, version}
+   │                 (Section 15.5)
+   │                      │
+   └──────────┬───────────┘
+              ▼
+og:image:width/height, og:image:alt resolved from the
+selected image's own MediaAsset fields or generation-time
+known dimensions
+        │
+        ▼
+og:type-conditional properties resolved (article:* for
+Blog Post/Case Study, per Section 15.6's mapping table;
+omitted for website-typed pages)
+        │
+        ▼
+Twitter/X Card fields derived as thin projection of the
+above (Section 15.3) — twitter:creator resolved only if a
+genuine source field exists (currently: none, so omitted)
+        │
+        ▼
+Build-time validation suite executed (Section 15.7)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Page deployed with complete OG/Twitter metadata,
+(missing      sharing the identical cache/revalidation lifecycle
+dimensions,   already established across Sections 2–14 — the
+incomplete    one exception being the dynamically generated OG
+generation    image itself, which carries its own narrow,
+inputs,       version-keyed cache entry (Section 15.5) nested
+article/      within, not parallel to, that same overall lifecycle
+website
+mismatch)
+```
+
+**Key Property, Consistent with Sections 2.12 through 14.10:** Social metadata resolution introduces exactly one genuinely new mechanism — dynamic OG image generation (Section 15.4–15.5) — and one genuinely new, deliberately-scoped omission (`twitter:creator`, Section 15.3), while every other property specified in this section is a reuse of data and resolution logic already established in Sections 2, 3, 6, 10, and 13. Consistent with this document's practice since Section 9, Section 15 extends rather than duplicates Section 2's foundational metadata architecture, closing the specific gaps (social-image suitability at scale, content-type-conditional article properties) that Section 2's original, narrower treatment left open.
+
+---
+
+**End of Section 15 — Open Graph & Social Metadata Architecture.**
+
+Ready to proceed to the next section (RSS / Content Syndication Architecture) on your instruction.
+
+Sections 1–15 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 16.
+
+---
+
+# 16. RSS & Content Syndication Architecture
+
+### 16.1 RSS Philosophy
+
+RSS/content syndication is treated in this architecture as a **secondary, derived discovery artifact** — occupying a structurally similar role to the sitemap (Section 6.1's "derived discovery artifact, not a primary discovery mechanism") but serving a distinct consumer class: feed readers, content aggregators, and — increasingly relevant given this document's AEO/GEO emphasis (Sections 11–12) — automated content-monitoring systems (including some retrieval pipelines that prefer a feed's structured, chronological format over crawling a Blog index page). Consistent with every other artifact this document has specified, the RSS feed introduces no new data: it is a machine-readable projection of the identical `BlogPost` records (Phase 5B §3.4) already validated, rendered, and sitemap-listed elsewhere in this system.
+
+**Single Source of Truth Inheritance (restated from Section 6.1's precedent):** The feed generator queries the same `BlogPostRepository.listPublished()` method (Phase 5B §6.1) already used by the sitemap generator (Section 6.2) and the Blog index page itself — there is no independent "feed content" query path, and therefore no scenario where the feed's content graph could diverge from what is actually published and indexable on the live site.
+
+**Scope Discipline, Stated Upfront:** Unlike Sections 2–15, which each addressed a mechanism applying broadly across most or all of the seventeen Phase 5B content types, RSS syndication in this architecture applies to exactly one content type — Blog Post — for reasons made explicit in Section 16.2. This is a narrower section than most of its predecessors by design, not by omission.
+
+### 16.2 Feed Scope
+
+**Why Blog Post, and Only Blog Post:** RSS as a format is purpose-built for **reverse-chronological, episodic content** — a feed reader's core value proposition is "show me what's new since I last checked." This maps precisely to the Editorial bounded context's Blog Post model (Phase 5B §2.1, §3.4), which already carries the `publishedAt`/`updatedAt` freshness fields (Phase 5B §2.2) this format depends on, and does not map meaningfully to Service, Industry, or Location content — these are stable, infrequently-changing reference pages (Phase 5A §3's rendering-strategy table already classifies them as SSG with webhook-triggered, not time-based, revalidation), which is the wrong shape for a "what's new" consumption pattern.
+
+**Case Study — Explicitly Considered and Excluded:** Case Study (Phase 5B §3.9) shares some episodic characteristics with Blog Post (each new case study is a discrete, dated publication event), and was evaluated against Section 16.1's scope criteria. It is excluded from feed scope for a narrower reason: Case Studies are lower-frequency, proof-content publications (per IA Phase 2 §9's positioning as consideration-stage trust content, not top-of-funnel discovery content) where the value of episodic "what's new" delivery is materially lower than for Blog content, and where the Phase 5B §3.9 authorization-gating workflow (`clientAuthorizationConfirmed`) already introduces publication-timing variability that would make a Case-Study feed a less reliable "recency" signal than the Blog feed. This is a deliberate, documented exclusion — not an oversight — consistent with this document's practice (Sections 6.7–6.8, 15.3) of explicitly scoping out adjacent possibilities rather than silently ignoring them.
+
+**No FAQ, Testimonial, or Structural-Content Feed:** These content types (Phase 5B §3.8, §3.10, and the Site Structure & Configuration bounded context, §3.12–§3.15) are non-episodic by nature — an FAQ item or a testimonial is not "published" in a reader-relevant chronological sense — and are excluded from feed scope on the same "wrong shape for this format" basis as Service/Industry/Location above.
+
+### 16.3 Feed Generation Strategy
+
+**Generation Mechanism, Mirroring Sitemap Precedent (Section 6.1/6.2):** The RSS feed is generated dynamically via a dedicated route (e.g., `app/feed.xml/route.ts`, following the identical folder-structure convention already established for `app/sitemap.ts` and `app/robots.ts`, Phase 5A §4) — not a static, hand-maintained file, for the identical reason already established for those two artifacts: a hand-maintained feed would drift from the actual published-content graph.
+
+**Rendering Mode:** Consistent with the Blog index's own SSG+ISR classification (Phase 5A §3's rendering-strategy table — "shorter revalidation window, e.g., every few hours"), the feed shares an **identical revalidation cadence** to the Blog index page itself, rather than an independently-configured schedule — this is a deliberate consistency choice: a feed reader and a human browsing `/blog` should never perceive meaningfully different "freshness" of what's newly published, since both draw from the same underlying query at comparable refresh intervals.
+
+**Tag-Based Revalidation Alignment (extends Section 6.6):** The feed's cache tag is the same `CONTENT_TAGS.blogPost` type-level tag (Section 6.6) already used for the Blog index — meaning the webhook-triggered revalidation flow already established in Phase 5B §8.4 (a new Blog Post publish event calling `revalidateTag`) invalidates the feed and the Blog index in the same operation, not as two independently-triggered revalidation events that could momentarily disagree.
+
+### 16.4 Feed Item Mapping
+
+Each feed item is constructed from an already-validated `BlogPost` record (Phase 5B §3.4), reusing fields already established for other purposes rather than introducing feed-specific content:
+
+| Feed Element | Source Field | Prior Reference |
+|---|---|---|
+| Item title | `BlogPost.title` | Section 2.4, 3.7 |
+| Item link | Resolved canonical URL | Section 2.6/4.10 |
+| Item description/summary | `BlogPost.excerpt` | Section 2.5 |
+| Item publication date | `BlogPost.publishedAt` | Phase 5B §2.2, Section 3.7 |
+| Item author | Resolved `Author.name` | Phase 5B §3.7, Section 3.7/3.10 |
+| Item category | `BlogCategory.name` (via `categoryId`) | Phase 5B §3.4/§3.5, Section 8.3 |
+| Item GUID (stable identifier) | `BlogPost.id` (the immutable kernel identifier, never the mutable `slug`) | Phase 5B §2.2's original rationale — "stable internal reference independent of slug (slugs may change; IDs must not)" |
+
+**Why GUID Uses `id`, Not `slug` — a Deliberate, Load-Bearing Choice:** This is the one mapping in the table above worth flagging explicitly: RSS readers use an item's GUID to detect whether they have already seen a given item, persisting that GUID client-side potentially indefinitely. Had this architecture used `slug` as the GUID source, a legitimate slug rename (Phase 5B §2.3's governed rename-with-redirect workflow) would cause every subscribed feed reader to treat the renamed post as a *new* item — a poor outcome directly avoidable by using the immutable `id` field instead, exactly as that field's kernel-level justification (Phase 5B §2.2) already anticipated for scenarios like this one.
+
+**Content Body — Summary Only, Not Full `RichContent`:** Consistent with Section 3.7's decision to omit `articleBody` from JSON-LD ("duplicating the full `RichContent` body... would violate Architectural Goal 7... by inflating payload size for a property search engines already retrieve from the rendered HTML itself"), the feed item's description carries only `excerpt`, not the full rendered `body` — the identical performance-and-redundancy rationale already applied in Section 3.7 governs here without modification. A feed reader receives enough to decide whether to click through; the full experience (including internal links, Section 7, and structured data, Section 3) remains on the canonical page itself.
+
+### 16.5 Content Eligibility Rules
+
+**Direct Application of Section 6.4's Sitemap Inclusion Rules, Narrowed to Blog Post:** A `BlogPost` is feed-eligible under exactly the same conditions Section 6.4 already established for sitemap inclusion — `status: PUBLISHED`, `deletedAt: null`, `noIndex: false` — with no independent eligibility criterion introduced for the feed specifically. This is a deliberate non-duplication: rather than re-deriving eligibility logic, the feed generator reuses the identical inclusion-rule evaluation already implemented for sitemap purposes (Section 6.4), scoped to the single content type in feed scope (Section 16.2).
+
+**Item Recency Window:** Where the sitemap includes the *entire* eligible content set regardless of age (Section 6.4 has no recency cutoff — an old, still-published Blog Post remains sitemap-listed indefinitely), the feed applies a **bounded window** — the most recent N items (a fixed count, e.g., the most recent 20–50 posts by `publishedAt` descending) or a fixed time window (e.g., the last 12 months), consistent with standard RSS convention that a feed represents "recent activity," not a complete archive. This is the one place feed eligibility diverges from sitemap eligibility, and the divergence is intentional: the sitemap's job (comprehensive discoverability) and the feed's job (recency signaling) are different jobs, per Section 16.1's scope framing.
+
+**`noIndex` Exclusion, Restated:** A Blog Post with `noIndex: true` (Section 2.9/5.6) is excluded from the feed for the identical reason it is excluded from the sitemap (Section 6.4) — a page an editor has deliberately marked as non-indexable should not be actively syndicated to readers or aggregators either; the two exclusion decisions are the same editorial signal applied consistently across both discovery-artifact types.
+
+**Archived Content, Restated:** Consistent with Section 6.4's ruling that `ARCHIVED` content is excluded from active sitemap promotion despite remaining indexable/reachable, `ARCHIVED` Blog Posts are likewise excluded from the feed — the feed, like the sitemap, actively promotes current, promoted content and does not need to re-syndicate editorially demoted material, even though that material remains reachable via its own canonical URL and any existing inbound links (Section 2.9's authority-preservation rationale, applied here without modification).
+
+### 16.6 Feed Validation
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 15.7:
+
+1. **Build-Time Inclusion Parity Check (restates Section 6.9's pattern, scoped to feed content):** The generated feed's item set is programmatically diffed against Section 16.5's eligibility-rule evaluation run independently over the published Blog Post set — any discrepancy fails the build, mirroring Section 6.9's sitemap-parity check exactly, applied to the narrower feed scope.
+2. **GUID Stability Check:** Confirms every feed item's GUID is sourced from `BlogPost.id` (never `slug` or a computed value) — a structural check enforcing Section 16.4's explicitly load-bearing GUID-stability decision, since a future implementation accidentally substituting `slug` would silently reintroduce the exact "renamed post appears as new" problem that decision exists to prevent.
+3. **Feed Well-Formedness Check:** Confirms the generated feed validates as syntactically well-formed XML conforming to the RSS (or Atom, per Section 16.7's forward-compatibility note) specification — a baseline structural check analogous to Section 6.9's sitemap-index structural validation, applied to feed-format conformance instead.
+4. **Recency Window Conformance Check:** Confirms the feed contains no more than the configured item-count/time-window ceiling (Section 16.5) and that items are correctly ordered reverse-chronologically by `publishedAt` — catching an ordering or windowing bug that would misrepresent what is genuinely "recent" to a subscribed reader.
+5. **Cross-Reference to Sitemap Tag Alignment (extends Section 16.3):** Confirms the feed's cache tag matches the `CONTENT_TAGS.blogPost` constant exactly (Section 6.6) — the same cross-artifact tag-consistency discipline already validated for the sitemap/robots.txt pairing in Section 6.9, applied here to the feed/Blog-index pairing.
+
+### 16.7 Future Multi-Feed Strategy
+
+**Current State — Single, Site-Wide Blog Feed:** At launch, exactly one feed exists, covering all `PUBLISHED` Blog Posts across every `BlogCategory` (Phase 5B §3.5) and `BlogTag` (Phase 5B §3.6) — consistent with the "smallest sufficient scope" discipline this document has applied elsewhere (e.g., Section 6.8's video-sitemap non-implementation, Section 15.3's `twitter:creator` omission).
+
+**Readiness Posture, Not Active Implementation (consistent with the established pattern from Sections 6.8, 8.6, 12.7):** Should category- or tag-scoped feeds become a genuine need (e.g., a reader wanting only AEO/GEO-category updates, per the Blog taxonomy already approved in IA Phase 2 §8.2), the architecture accommodates this additively: because `BlogCategory` and `BlogTag` already have their own canonical, indexable routes (`/blog/category/[category]`, `/blog/tag/[tag]`, per Section 4.6), a category- or tag-scoped feed would follow the identical generation pattern already established in Section 16.3 — reusing `listPublished()` filtered by the relevant `categoryId`/`tagIds`, sharing the same item-mapping logic (Section 16.4), and the same eligibility rules (Section 16.5) — requiring no restructuring of this section's architecture, only additional route instances of the same pattern.
+
+**Format Extensibility — Atom as a Documented Alternative, Not a Parallel Requirement:** This architecture treats "RSS" as shorthand for "a syndication feed in a standard format" — the specific choice between RSS 2.0 and Atom is an implementation detail deferred to Phase 9/DevOps-level tooling decisions (consistent with how package-manager choice was deferred in Phase 5A §2), since both formats satisfy every architectural requirement specified in Sections 16.1–16.6 identically; this document does not mandate one over the other, only that whichever is chosen conforms to Section 16.6's well-formedness validation.
+
+**No Feed for Future Content Types Without Repeating Section 16.2's Classification Exercise:** Consistent with Section 9.2's "closed-set" discipline for Primary Entities, this document does not pre-authorize feed expansion to any future content type merely because it is episodic-shaped — a future content type would require its own Section 16.2-style scope justification before being added to feed coverage, preventing feed-scope creep by default.
+
+### 16.8 RSS Resolution Flow
+
+```
+Feed requested (or build/deploy cycle triggers scheduled
+regeneration, per Section 16.3's Blog-index-aligned cadence)
+        │
+        ▼
+BlogPostRepository.listPublished() invoked — identical method
+already used by the sitemap generator (Section 6.10) and the
+Blog index page itself; no feed-specific query path
+        │
+        ▼
+Section 16.5's eligibility rules applied (status, deletedAt,
+noIndex, ARCHIVED-exclusion — identical to Section 6.4's
+sitemap rules) plus the feed-specific recency window
+        │
+   ┌────┴────┐
+ excluded    included
+   │           │
+   │           ▼
+   │      Resolve canonical URL (Section 2.6/4.10's shared
+   │      resolveCanonical() function — identical source used
+   │      by <link rel="canonical">, og:url, JSON-LD, and
+   │      sitemap entries)
+   │           │
+   │           ▼
+   │      Resolve Author name, Category name (already-fetched
+   │      relationship data, Phase 5B §6.2–6.3 — no additional fetch)
+   │           │
+   │           ▼
+   │      Map to feed item per Section 16.4 (title, link,
+   │      excerpt-only description, publishedAt, GUID from
+   │      immutable id)
+   ▼           ▼
+(no entry)  Item appended to feed, ordered by publishedAt
+        │   descending, capped at the recency window (16.5)
+        ▼
+Build-time validation suite executed (Section 16.6)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Feed deployed to CDN, cached under the same
+(parity        CONTENT_TAGS.blogPost tag already governing
+mismatch,      the Blog index — webhook-triggered revalidation
+unstable       (Phase 5B §8.4) invalidates both artifacts in
+GUID, malformed one operation, never independently
+XML, ordering
+error)
+```
+
+**Key Property, Consistent with Sections 2.12 through 15.8:** RSS/syndication architecture introduces no new content fields and no independent cache lifecycle — it shares the Blog index's own tag and revalidation cadence exactly, and every item field is a direct reuse of data already validated and rendered elsewhere in this system. Consistent with the narrower scope stated in Section 16.1, this section's distinguishing characteristic relative to Sections 2–15 is that it is the first mechanism in this document scoped to a **single content type** rather than applied broadly across the content graph — a deliberate reflection of RSS's narrow, format-appropriate use case (episodic, reverse-chronological content) rather than a general-purpose SEO mechanism.
+
+---
+
+**End of Section 16 — RSS & Content Syndication Architecture.**
+
+Ready to proceed to the next section (Pagination Architecture) on your instruction.
+
+Sections 1–16 (Phase 6) and Phases 1–5B remain frozen and unmodified. Continuing with Section 17.
+
+---
+
+# 17. Pagination Architecture
+
+### 17.1 Pagination Philosophy
+
+Pagination has already been touched upon in three prior sections — Section 4.5 established the canonical-URL rule (self-referencing, not consolidated to page 1), Section 5.5 confirmed numbered, crawlable pagination as the Crawl Budget Strategy's governing choice over infinite-scroll-only presentation (restating Phase 5A §5.3), and Section 6.4 confirmed paginated pages remain sitemap-eligible. Section 17 does not re-derive any of these — it consolidates them into a single, complete pagination specification and fills the remaining gaps (URL structure detail, metadata distinguishability, internal-link mechanics) those prior sections deliberately deferred to "a later section" (Section 4.5's own language).
+
+**Governing Position, Restated From Section 4.5/5.5:** Paginated content in this architecture is treated as a **series of genuinely distinct, independently valuable resources**, not as an artifact of display-technology limitation to be hidden from search engines. This reflects the same non-consolidation stance already frozen in Section 4.5 — this document does not treat pagination as a duplicate-content problem to be engineered around, but as legitimate content segmentation to be made fully crawlable, indexable, and internally consistent.
+
+**No New Data:** Consistent with the discipline maintained since Section 9, pagination introduces no new Phase 5B domain fields — it is a rendering/routing concern layered over the existing `listPublished()` repository methods (Phase 5B §6.1) already used for every index/listing page in this system.
+
+### 17.2 Applicable Content Types
+
+**Closed Set, Restated and Completed:** Phase 5A §5.3 already scoped pagination to "the Blog index and any future paginated listing (Blog Category/Tag indexes at sufficient volume)." Section 17.2 confirms this remains the complete, closed set and states the reasoning explicitly for each candidate content-listing surface in the sitemap (IA Phase 2 §1):
+
+| Listing Page | Paginated? | Reasoning |
+|---|---|---|
+| `/blog` (Blog index) | **Yes** | Highest-volume, continuously-growing content type (Editorial bounded context, Phase 5B §2.1) — the primary candidate for exceeding a single-page-appropriate item count |
+| `/blog/category/[category]` | **Yes, conditionally** | Paginated only once a given category's item count exceeds the single-page threshold (Section 17.3); most categories may never require it, but the mechanism is uniformly available |
+| `/blog/tag/[tag]` | **Yes, conditionally** | Identical conditional basis to Category |
+| `/case-studies` (index) | **No** | Case Studies (Phase 5B §3.9) are authorization-gated, lower-frequency publications (Section 16.2's reasoning restated) — volume is not expected to approach pagination thresholds within any realistic planning horizon; if this assumption changes, this section would require revision, but is not speculatively paginated now |
+| `/services`, `/industries` | **No** | Fixed, small, deliberately bounded sets (a handful of Service/Industry entities, not an open-ended growing collection) — pagination is architecturally inappropriate for a hub whose entire purpose is to be scannable in one view |
+| `/locations` (hub) | **No, by design — different mechanism applies** | Despite Location being this system's designated high-volume-growth content type (Phase 5A §3.2, Phase 5B §11.1), the `/locations` hub index is **not** paginated; at the volumes anticipated (potentially hundreds of cities), a flat paginated list is the wrong UX pattern entirely — this hub is expected to use filtering/search-within-page (a UX Phase 3 concern, not a pagination concern) rather than sequential numbered pages, which would be a poor way to navigate hundreds of geographically-organized entries. This is a deliberate architectural exclusion, not an oversight |
+| `/testimonials` | **No** | Bounded, curated set by editorial design (Phase 5B §3.10) — not expected to grow into pagination territory |
+
+**Governing Rule for Future Additions:** As with Section 9.3's closed-set discipline for Primary Entities and Section 16.7's closed-set discipline for feed scope, no future listing page is paginated by default merely because it lists content — each candidate is evaluated against the same volume-and-navigation-pattern reasoning demonstrated in the table above before pagination is applied.
+
+### 17.3 URL Structure
+
+**Pattern (restates and completes Section 4.5's brief mention):** Paginated pages use a query-parameter suffix on the base listing route — `/blog?page=2`, `/blog/category/[category]?page=2`, `/blog/tag/[tag]?page=2` — with page 1 having **no parameter at all** (i.e., `/blog` and `/blog?page=1` are not treated as two distinct addressable states; the unparameterized URL *is* page 1).
+
+**Why Query Parameter, Not Path Segment (e.g., `/blog/page/2`):** This architecture selects the query-parameter form specifically because it composes cleanly with Section 4.4's existing query-parameter-stripping discipline — `page` was already named in Section 4.4 as "the one deliberate, named exception" to the strip-all-query-parameters default, meaning this choice was effectively pre-committed by that earlier section's own wording. A path-segment approach (`/blog/page/2`) would instead require treating `page` as a routable dynamic segment analogous to `[slug]`, introducing an additional route-pattern entry in IA Phase 2 §4's URL Structure table that this document has not previously specified and would need to retroactively insert — the query-parameter approach avoids this by fitting entirely within machinery Section 4 already built.
+
+**Threshold Determination:** The specific items-per-page count (and therefore the point at which page 2 begins to exist) is an editorial/UX-density decision (aligned with the Card Grid Defaults already established in Design System Phase 4 §6.3 — "3-column at `xl`+, 2-column at `md`–`lg`, 1-column below `md`") — this architecture specifies the *mechanism*, not the specific numeric threshold, consistent with how Section 6.9 flagged sitemap size-ceiling thresholds as a build-time warning rather than a hardcoded architectural number.
+
+### 17.4 Canonical Strategy
+
+**Full Restatement of Section 4.5, No Modification:** Every paginated page is self-referencing — page 2's canonical URL is its own URL (including its `?page=2` parameter, per Section 17.3's exception to the general query-stripping rule), never consolidated back to page 1. This was already fully decided in Section 4.5; Section 17.4 exists only to confirm no new canonical consideration arises from this section's additional detail (URL structure, metadata) that would require revisiting that decision.
+
+**Interaction With Section 4.6's Category/Tag Ruling:** Where Section 4.6 already established that Category/Tag index pages are themselves self-canonical, non-consolidated resources, Section 17.4 confirms this composes correctly with pagination — a Category index's page 2 canonicalizes to itself, which is simply the paginated extension of a rule Section 4.6 already applied to the unpaginated case; no conflict or special-case handling is introduced by combining the two.
+
+### 17.5 Metadata Strategy
+
+**Restates and Fulfills Section 4.5's Deferred Obligation:** Section 4.5 explicitly flagged that "Title/Description resolution... must produce a distinguishable value per page... rather than identical metadata across the series" and framed this as "a cross-reference back to Section 2's Metadata Architecture" — Section 17.5 is where that cross-reference is fulfilled.
+
+**Title Resolution for Paginated Pages (extends Section 2.4's Tier 2 templates):** Page 2+ of any paginated listing appends a page-indicator suffix to the already-established Tier 2 hub-title template (Section 2.4's "Hub/Index pages" row — `{Hub Name} | {organizationName}`) — e.g., `Blog — Page 2 | SEO Growth Hub`. This is a narrow, additive extension of an existing template, not a new template category: the resolution function already specified in Section 2.3 (`resolveTitle`) gains one conditional branch (append `— Page N` when a `page` parameter beyond 1 is present), rather than requiring a wholly separate pagination-specific title-resolution function.
+
+**Description Resolution:** Page 2+ descriptions follow an analogous pattern — the base hub description (Section 2.5) with an appended, generic qualifier indicating this is a continuation (e.g., "More SEO insights and articles from SEO Growth Hub — page 2"), sourced from a fixed template rather than per-page editorial authoring, since no `SEOMetadata` entity exists for a paginated page state (pagination is a routing/query concern, not a Phase 5B content record — there is no `entity.seo` to consult for page 2 specifically, only the hub's own `SEOMetadata`, Section 2.2's Tier 1/3, feeding into this pagination-aware template).
+
+**`rel="next"`/`rel="prev"` — Explicitly Not Implemented:** These link relations, historically recommended for paginated series, have been publicly deprecated by major search engines as a signal they act upon (the same "signal value has materially declined" reasoning already applied in Section 6.6 to `<priority>`/`<changefreq>`) — consistent with that precedent, this architecture does not implement `rel="next"`/`rel="prev"` link tags, relying instead on standard crawlable `<a>` links between pages (Section 17.6) as the actual discovery mechanism, since that is what search engines are known to still rely on in practice.
+
+### 17.6 Internal Linking Strategy
+
+**Extends Section 7's Internal Linking Architecture to the Pagination-Specific Case Not Previously Covered:** Section 7's tables (7.3–7.4) catalogued structural and cross-entity links but did not address page-to-page links *within* a single paginated series — this is the gap Section 17.6 closes.
+
+**Pagination Controls as Genuine, Crawlable Links:** The pagination UI (numbered page links, "next"/"previous" controls) renders as standard `<a href>` elements pointing to each page's own resolved URL (Section 17.3) — never JavaScript-only, client-state-driven pagination that would leave page 2+ undiscoverable to a crawler that doesn't execute the relevant client-side interaction. This directly extends the Crawlability principle (Section 1.2) and Section 5.5's Crawl Budget Strategy point that "numbered, crawlable pagination URLs are preferred... specifically for crawlability" — Section 17.6 confirms the *mechanism* satisfying that already-stated preference.
+
+**Orphan-Prevention Application (extends Section 7.10's check to paginated pages specifically):** Every paginated page beyond page 1 receives its required minimum-two-inbound-links (IA Phase 2 §13, Section 7.10's build-time Orphan Page Sweep) from: (1) the adjacent page in the series (page 1 links to page 2, page 2 links to both page 1 and page 3, etc.), and (2) — where the paginated series is short enough — a numbered-page-link component surfacing multiple page numbers simultaneously (e.g., "1 2 3 4 5"), which provides additional inbound linking beyond the bare minimum sequential adjacency. This satisfies Section 7.10's orphan-prevention rule for the pagination case specifically, which Section 7's original table did not explicitly enumerate.
+
+**No Related-Content Linking Into Mid-Series Pages:** Consistent with Section 7.8's Related Content Strategy (which surfaces individual Blog Posts, not index/listing pages, as related-content targets), no structural or contextual link elsewhere on the site points to `/blog?page=2` specifically — inbound linking to paginated pages beyond page 1 comes exclusively from within the pagination series itself (as described above), never from external contextual references, since "page 2 of the blog" is not a meaningful link target from, say, a Service page's related-reading section (which links to specific posts, per Section 7.3's Pillar→Cluster pattern, not to an arbitrary index page number).
+
+### 17.7 Crawl & Indexation Rules
+
+**Restates Section 6.4's Sitemap-Inclusion Ruling, Confirms No Divergence:** Section 6.4 already established "Paginated series, page 2+ (Section 4.5) — **Yes**" for sitemap inclusion, and Section 5.6's Index/Noindex Decision Matrix already included the row "Paginated series, page 2+ — `false` (self-canonical default) — Yes — distinguishable metadata required." Section 17.7 confirms both rulings stand unmodified and notes the one dependency this section discharges: the "distinguishable metadata required" condition flagged in Section 5.6 is now fully satisfied by Section 17.5's title/description resolution above — that earlier row's conditional requirement is no longer an open item.
+
+**No Robots.txt Interaction:** Paginated URLs are not disallowed in `robots.txt` (Section 5.4) — they fall under the same default-open posture governing every other content route, with no pagination-specific `robots.txt` rule required or introduced.
+
+**Crawl Budget Consideration, Restated From Section 5.5:** Section 5.5 already scoped crawl-budget concerns primarily to the Location content type, explicitly noting the other sixteen content types (which would include paginated Blog/Category/Tag listings) are "unlikely, at any realistic content volume for this business, to approach a scale where crawl budget is a binding constraint." Section 17.7 confirms pagination does not change this assessment — even a Blog index growing into dozens of paginated pages remains well within the crawl-budget headroom already established for this site's overall scale profile.
+
+### 17.8 Validation Strategy
+
+Consistent with the validation-checkpoint pattern established across Sections 2.11 through 16.6:
+
+1. **Canonical Self-Reference Conformance Check (extends Section 4.9's existing self-reference check to the paginated case):** Confirms every paginated page's resolved canonical URL includes its own `page` parameter and does not collapse to the unparameterized page-1 URL — verifying Section 17.4's restated rule is correctly implemented, not merely restated.
+2. **Metadata Distinguishability Check (discharges Section 5.6's flagged dependency):** Build-time validation confirms no two pages within the same paginated series produce identical resolved titles or descriptions — a direct, automated check that the Section 17.5 template's page-number-appending logic is actually functioning, rather than two pages silently sharing the base hub metadata due to an implementation gap.
+3. **Pagination Link Integrity Check (extends Section 7.10's orphan-prevention and relationship-to-link correspondence checks to this specific case):** Confirms every paginated page beyond page 1 has at least two resolvable inbound links per Section 17.6's mechanism, and that every "next"/"previous"/numbered-page link target resolves to an actually-existing page within the series (no link to a page number beyond the series' actual last page).
+4. **Sitemap/Feed Non-Interference Check:** Confirms paginated pages beyond page 1 are correctly present in the sitemap (Section 6.4, restated) but correctly **absent** from the RSS feed (Section 16.2's scope — the feed indexes individual Blog Posts, never index/listing pages of any kind, paginated or not) — a cross-artifact consistency check preventing a future implementation from conflating "sitemap-eligible" with "feed-eligible" for this specific page type.
+5. **Query-Parameter-Stripping Non-Interference Check (extends Section 4.9's canonical validation):** Confirms the general query-parameter-stripping behavior (Section 4.4) correctly preserves `page` while still stripping every other simultaneously-present parameter (e.g., a URL arriving as `/blog?page=2&utm_source=newsletter` must canonicalize to `/blog?page=2`, not `/blog` and not `/blog?page=2&utm_source=newsletter`) — the specific interaction-correctness check between Section 4.4's general rule and Section 17.3's named exception to it.
+
+### 17.9 Pagination Resolution Flow
+
+```
+Route requested with optional ?page=N parameter (build-time SSG
+or on-demand ISR, per Phase 5A §3; paginated pages follow the
+same rendering-strategy classification as their base listing
+page — Blog index's SSG+ISR treatment, Phase 5A §3)
+        │
+        ▼
+listPublished() invoked (Phase 5B §6.1) — identical method
+already used by the unpaginated case, sitemap generator
+(Section 6.10), and feed generator (Section 16.8); pagination
+applies only at the presentation/slicing layer, not the query layer
+        │
+        ▼
+Result set sliced per the configured items-per-page threshold
+(Section 17.3) — page parameter determines which slice is
+rendered; page 1 (no parameter) is the default, unparameterized slice
+        │
+        ▼
+Canonical URL resolved: self-referencing, including page
+parameter where present (Section 17.4) — reuses the same
+resolveCanonical() function already shared across Sections
+2, 4, 6, 8, 15, 16
+        │
+        ▼
+Title/description resolved via the extended Section 2.3
+resolveTitle()/resolveDescription() functions, with the
+page-number-suffix conditional branch applied (Section 17.5)
+        │
+        ▼
+Pagination controls rendered as genuine, crawlable <a href>
+links (Section 17.6) — adjacent-page and, where the series is
+short enough, numbered-page links, satisfying the orphan-
+prevention minimum
+        │
+        ▼
+Sitemap inclusion (Section 6.4, restated) and feed exclusion
+(Section 16.2, restated) both apply per their already-established
+rules — no independent pagination-specific inclusion logic
+        │
+        ▼
+Build-time validation suite executed (Section 17.8)
+        │
+   ┌────┴────┐
+  fail       pass
+   │           │
+   ▼           ▼
+BUILD FAILS   Paginated series deployed, sharing the identical
+(non-self-    cache/revalidation lifecycle already established
+canonical,    for the base listing page (Section 7.3's Blog-
+duplicate     index-aligned cadence, Phase 5A §3) — no
+metadata,     independent cache tier per page number
+orphaned
+page, feed
+leakage)
+```
+
+**Key Property, Consistent with Sections 2.12 through 16.8:** Pagination architecture introduces no new content fields, no new cache lifecycle, and no new content-fetching mechanism — it is a slicing and routing discipline layered over the identical `listPublished()` query already powering the unpaginated Blog index, the sitemap, and the feed. Section 17's primary contribution is closing three gaps prior sections explicitly deferred (Section 4.5's metadata-distinguishability obligation, Section 5.6's conditional requirement, and Section 7's unaddressed page-to-page linking case) rather than introducing new architectural surface area — consistent with this document's established pattern of narrowing scope as sections progress deeper into cross-cutting concerns already substantially addressed elsewhere.
+
+---
+
+**End of Section 17 — Pagination Architecture.**
+
+Ready to proceed to the next section (Redirect Architecture) on your instruction.
+
