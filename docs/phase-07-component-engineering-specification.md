@@ -235,3 +235,233 @@ Every per-component and per-tier contract specified in the sections that follow 
 
 Ready to continue with Section 3.
 
+Phases 1–6 and Phase 7 Sections 1–2 remain frozen and immutable. Continuing with Section 3.
+
+---
+
+# 3. Component Composition Architecture
+
+### 3.1 Purpose and Scope of This Section
+
+Section 1 established the four-tier Responsibility Model and its one-directional composition rule (§1.6); Section 2 established how individual props contracts are constructed, including the `children`/slot mechanism composition relies on (§2.5). Section 3 specifies the **rules governing how components actually assemble into pages** — which tier compositions are permitted, how a page's data flows down through nested composition without being re-fetched at each level, how tier boundaries are preserved as composition depth increases, and how the Server/Client boundary (§1.7) is maintained across a composed tree rather than merely assigned per-component in isolation.
+
+### 3.2 The Composition Chain, Formalized
+
+**Restates and Completes §1.6's Tiering With Its Full Assembly Path:** Section 1.6 established four tiers and a one-directional dependency rule; Section 3.2 specifies the complete, closed composition chain every page in the system follows:
+
+```
+Page (Server Component, app/.../page.tsx — Phase 5A §5)
+  │
+  ▼ composes
+Compositional (Section) components
+  (Hero, CTA Band, Trust Bar — Section 1.6's fourth tier)
+  │
+  ▼ compose
+Structural components (where applicable — Header/Footer are
+composed at the layout level, Phase 5A §5.2, not per-page)
+  +
+Composite components (Card, Form, Testimonial Card)
+  │
+  ▼ compose
+Primitive components (Button, Badge, Tag, Input)
+```
+
+**No Tier May Be Skipped Downward, and No Tier May Reach Upward:** A Page composes Sections directly; it does not import and instantiate a Primitive (e.g., a bare Button) directly into its own JSX without an intervening Composite or Section — this would bypass the exact layering discipline §1.6 established, and would mean the Page itself is silently taking on Composite-tier responsibility. Conversely, a Primitive never imports a Composite or Section to "reach up" for context it lacks — if a Button needs to know its semantic `CTAIntent` (Phase 5B §3.14), that information is passed down to it as a prop from whichever Section-tier component composed it (§2.6's callback-wiring point), never queried upward.
+
+**The One Necessary Exception — the Root Layout:** Consistent with Phase 5A §5.2's layout hierarchy (`app/layout.tsx` → `app/(marketing)/layout.tsx`), Header and Footer (Structural tier) are composed once, at the `(marketing)` layout level, not per-page — every Page in the marketing route group inherits them automatically through Next.js's native layout-nesting mechanism (Phase 5A §5.2) rather than each Page explicitly re-composing them. This is not a violation of the Page → Section → Composite → Primitive chain above; it is the layout-level equivalent of that same chain, sitting one level above individual Pages in the composition tree Phase 5A §5.2 already established.
+
+### 3.3 Data Flow Through the Composition Chain
+
+**Single Fetch, Downward-Only Prop Distribution — Direct Extension of Phase 5B §6.2 and Phase 6 §2.12's Shared Content Service Call:** Every page-level data dependency is resolved exactly once, at the Page (Server Component) level, via the Content Service call already established throughout Phase 5B §6.2 and reused across every Phase 6 generation-flow diagram (§2.12 through §20.9). That resolved data is then distributed **downward** through the composition chain as props — a Section-tier component receives its slice of that data from the Page that composed it; a Composite-tier component receives its slice from the Section that composed it; a Primitive receives only what its immediate Composite parent passes down. At no point does a lower-tier component independently re-fetch or re-derive data the Page has already resolved.
+
+**Why This Is Not Merely a Restatement of Section 1.4:** Section 1.4 established that components "consume, they do not fetch" as a general principle. Section 3.3's contribution is the specific mechanical consequence for *multi-tier* composition: because data flows downward through *several* tiers before reaching, say, a Primitive Button inside a Composite Card inside a Compositional Section, each intermediate tier is responsible for **narrowing** the data it received down to exactly what the next tier down needs (§2.2's "minimum sufficient slice" principle, now applied recursively at every composition boundary, not just once at the Page-to-first-consumer boundary). A Section passing its *entire* received prop bag unchanged into every Composite it composes — rather than selecting the specific slice each Composite's own contract requires — would violate this narrowing discipline even though no re-fetching has occurred.
+
+**Relationship-Resolved Data Follows the Identical Path:** Where a Page's Content Service call has already resolved related-entity arrays (Phase 5B §6.3's `resolveMany()`, e.g., a Service page's related Case Studies), that already-resolved, already-`publishedRelationGuard`-filtered array is what flows down to whichever Section composes the "Related Case Studies" card grid — a Card component never independently resolves its own related-content; it receives a single, already-resolved `CaseStudy` projection (per §2.2's derivation rule) as its props.
+
+### 3.4 Server/Client Boundary Preservation Across Composition
+
+**The Governing Problem This Subsection Solves:** Section 1.7 classified individual components as Server or Client. Composition introduces a question §1.7 did not itself resolve: when a Server-tier Section composes a Client-tier component (e.g., a Hero Section, which is Server per §1.7's table, composing a CTA Button that is itself Server — but a Blog Post page's Section composing a Client-tier FAQ Accordion), what happens to everything *around* that client island within the same Section?
+
+**The Island Boundary Is Drawn at the Narrowest Possible Component, Never Propagated Upward:** Consistent with Phase 5A §3.3's original framing ("client islands," explicitly named as isolated, narrowly-scoped exceptions) and restated at the component-classification level in §1.7's split-component discipline, a Client-tier component composed within an otherwise-Server-tier Section does **not** convert its composing Section, or that Section's Page, into a Client Component. Next.js's Server-Component-composition model (the underlying mechanism Phase 5A §3.3 already relies on) permits a Server Component to compose a Client Component as a child while remaining itself server-rendered — this document's composition architecture is built specifically to exploit that mechanism at every tier, never to work around it by over-promoting an entire subtree to client rendering merely because one narrow island within it needs interactivity.
+
+**Prop-Passing Across the Server→Client Boundary Is Constrained to Serializable Data:** Where a Server-tier Section passes props into a Client-tier component it composes (e.g., a Section passing a resolved `FAQItem[]` array into a Client-tier FAQ Accordion), those props must be serializable across the Server/Client boundary — this is a direct, mechanical consequence of the Rendering Strategy already frozen in Phase 5A §3, not a new rule Phase 7 introduces. Because every content-projection prop (§2.2) is, by construction, a plain-data projection of an already-JSON-serializable Phase 5B domain model (Phase 5B §4.5's `RichContent` block structure was itself justified partly on serializability grounds), this constraint is satisfied by default for every prop table Sections 3+ will specify — no component contract in this system requires passing a non-serializable value (a function reference, a class instance) across this boundary, with the sole, already-anticipated exception of callback props (§2.6) that originate *within* the Client-tier subtree itself and never cross back upward into Server-rendered territory.
+
+**Callback Props Never Cross the Server→Client Boundary Downward:** A Server-tier Section cannot pass a server-side function as an `onClick` callback prop into a Client-tier component it composes — this is a structural impossibility under the Rendering Strategy already established (Phase 5A §3.3), not merely a style guideline. Where a Client-tier component's interaction needs to trigger a page-level or Section-level consequence (§2.6's `trackEvent()` wiring point), that wiring occurs entirely *within* client-rendered code (the Client-tier component itself, or a Client-tier wrapper immediately surrounding it), never by threading a callback down from a Server-tier ancestor.
+
+### 3.5 Composition Patterns Per Tier Pairing
+
+**Section-Composes-Composite (the Most Common Pattern):** A Compositional/Section component (e.g., a "Related Services" section on an Industry page) receives an already-resolved array of `Service` projections from its Page ancestor (§3.3) and maps that array into repeated instances of a single Composite component (Service Card) — the Section owns the grid/layout arrangement (Design System Phase 4 §6.4's responsive card-grid rules) and the iteration; the Composite owns each individual item's internal rendering. This is the direct compositional expression of the Hub-and-Spoke internal-linking pattern already frozen in Phase 6 §7.3 — the Section is the "hub" rendering surface; each composed Card is a "spoke."
+
+**Composite-Composes-Primitive (Internal, Not Independently Reusable):** A Card's internal composition of a Button (its "Learn More" micro-link, per Phase 6 §7.9's exception clause) or a Badge (a category label) is *internal* to that Composite's own contract — the Page or Section composing the Card has no direct visibility into, or control over, which Primitives the Card assembles internally, beyond what the Card's own props contract (Section 2) exposes as configurable (e.g., a `showBadge` boolean prop, if the Card's contract defines one). This is the compositional expression of Section 1.6's tiering: a Section depends on a Composite's *contract*, never on that Composite's *internal* Primitive assembly.
+
+**Structural-Composes-Nothing-Page-Specific:** Header and Footer (§3.2's layout-level exception) compose only from the singleton `Navigation`/`Footer` entities (Phase 5B §3.12–3.13) and their own internal Primitives (nav-item links, social icons) — they never accept or compose a Page-supplied Composite or Section, consistent with §2.5's rule that Structural/singleton components accept no content-composition props at all.
+
+**Compositional-Composes-Compositional (the One Permitted Same-Tier Composition):** Unlike every other tier pairing, which flows strictly downward (§3.2), Section-tier components *may* compose other Section-tier components in one specific, bounded case: a Page's overall scroll-journey assembly (Phase 3 §5–10's per-page Scroll Journey specifications) is itself a sequence of Sections composed by the Page — this is not a same-tier component containing another same-tier component in a nested sense, but a flat, sibling sequence, and is named here explicitly to distinguish it from a prohibited nested-Section-within-Section pattern (a Hero Section rendering a CTA Band *inside* itself, rather than the Page placing them as siblings) — the latter is disallowed, since it would blur the Page's own responsibility (sequencing Sections per the approved Scroll Journey) into the Section tier.
+
+### 3.6 Slot-Based Composition for Shared Layout Structures
+
+**Extends §2.5's Named-Slot Governance to Its Cross-Component Application:** Where §2.5 established that named slots are reserved for genuine multi-region layouts, Section 3.6 specifies the one recurring case in this system's component inventory where that pattern is actually exercised: the CTA Band component (Phase 4 §26.4), which Phase 3's UX Journeys (§5–10) place at the end of nearly every page type with content that varies (a headline and dual-CTA pairing whose specific copy/links differ per page context, per Phase 6 §3.14's `CTA` entity). Rather than the CTA Band accepting a single `children` slot into which an entire pre-assembled block is passed, its contract (specified fully in a later, per-component section) exposes named props directly sourced from the `CTA` domain entity's own fields (Phase 5B §3.14 — `label`, `href`, `style`, `intent`) rather than a composition slot at all, since the variability here is **data variability**, not **structural/layout variability** — a distinction worth drawing explicitly, since it determines whether a given customization need is solved via §2.2's props-derivation mechanism or via §2.5's slot-composition mechanism, and this document does not conflate the two.
+
+**The Governing Test:** A component varies its *content* via data props (§2.2) when the variation is a difference in *what* is displayed using an otherwise-fixed structure; it varies via composition slots (§2.5, §3.6) only when the variation is a difference in *structure itself* — which region exists, how many regions exist, or what arbitrary nested component tree occupies a given region. Every component specified in this project's inventory (Phase 4 §26) satisfies its variability needs through the former (data-prop) mechanism; no component in the closed inventory established by Phase 7 §1.2 requires the latter (slot-based) mechanism beyond `children`'s default single-slot case — this is stated here as a confirming observation closing out the composition-architecture specification, not as a new constraint being introduced.
+
+### 3.7 Composition Depth Governance
+
+**Maximum Practical Composition Depth, Stated as a Design Constraint:** Consistent with Design Philosophy's "restraint" principle (Phase 4 §2) and this section's own tier-chain (§3.2, four levels: Page → Section → Composite → Primitive), no component composition in this system exceeds this four-level depth under normal operation — a Primitive never contains another Composite-wrapped-in-a-Section internally, which would indicate a tiering misclassification (§1.6) rather than a legitimate deep-composition need. Where a rendering requirement seems to demand deeper nesting, the correct resolution is re-examining whether an intermediate tier's responsibility has been drawn correctly (Section 1.6's tier definitions), not accepting deeper nesting as an exception to this governance.
+
+### 3.8 Section Resolution Summary
+
+Section 3 has established the deterministic composition rules governing how every component contract specified in Sections 4+ assembles into actual pages:
+
+- The composition chain is closed and strictly one-directional — Page → Section → (Structural/Composite) → Primitive — with no tier-skipping downward and no upward dependency, and Header/Footer composed once at the layout level as the chain's sole structural exception (§3.2).
+- Data is fetched exactly once, at the Page level, and flows downward through props with recursive narrowing at every composition boundary — no lower tier re-fetches or re-derives what a higher tier has already resolved (§3.3).
+- Client-tier islands are drawn at the narrowest possible component and never propagate their client-rendering requirement upward to composing Sections or Pages; props crossing the Server→Client boundary are constrained to serializable data, and callback props never cross that boundary downward (§3.4).
+- Five specific tier-pairing composition patterns are defined — Section-composes-Composite, Composite-composes-Primitive, Structural-composes-nothing-page-specific, and the bounded, sibling-only Compositional-composes-Compositional pattern — with nested same-tier composition explicitly disallowed (§3.5).
+- Content variability is resolved via data props (§2.2); structural variability is resolved via composition slots (§2.5) — the two mechanisms are never conflated, and this system's closed component inventory requires the former almost exclusively (§3.6).
+- Composition depth is governed to a maximum practical four-tier chain, with deeper nesting treated as a signal of tiering misclassification rather than an accepted pattern (§3.7).
+
+Every per-component contract specified in the sections that follow composes within this architecture without exception.
+
+**End of Section 3 — Component Composition Architecture.**
+
+Ready to continue with Section 4.
+
+Phases 1–6 and Phase 7 Sections 1–3 remain frozen and immutable. Continuing with Section 4.
+
+---
+
+# 4. State Management Architecture
+
+### 4.1 Purpose and Scope of This Section
+
+Section 2 established that internally-managed component state is permitted only for "purely presentational, non-business-meaningful state" (§2.7) and that anything business-meaningful must be lifted to controlled props and callbacks (§2.6). Section 3 established how data flows downward through the composition chain from a single Page-level fetch (§3.3) and how the Server/Client boundary is preserved across that chain (§3.4). Neither section fully specified **where client-side state is permitted to exist, who owns it, and what mechanism governs it** when a Client-tier component (§1.7's closed list — Mega Menu, Mobile Drawer, Form, Search Overlay, FAQ Accordion, Testimonial Carousel, Toast Notification, Modal/Drawer) requires state beyond a single prop/callback pair. Section 4 closes this gap.
+
+**Governing Constraint, Restated From §2.9:** Because this system's Rendering Strategy (Phase 5A §3) is SSG-first and every content-bearing value already flows through props derived from a single Page-level fetch (§3.3), the scope of state this section governs is deliberately narrow: **ephemeral, client-local interaction state** — never a substitute data-fetching or data-caching layer. This section does not, and must not, introduce a parallel path for content to reach a component outside the composition chain already frozen in Section 3.
+
+### 4.2 State Classification Taxonomy
+
+Every piece of state that can exist within this system's component tree is classified into exactly one of four categories — a closed set, consistent with this document's established practice of closed-set classification (Section 1.6's tier model, Phase 6 §9.3's Primary Entity set, Phase 6 §16.2's feed-scope set):
+
+| Category | Definition | Example | Governing Subsection |
+|---|---|---|---|
+| **Server State** | Data resolved once, server-side, via the Content Service call (Phase 5B §6.2, Phase 6 §2.12) and passed down as `readonly` props (Phase 5B §4.7) | A Service entity's `name`, `deliverables`, resolved related Case Studies | Already fully governed by Section 3.3 — restated here only for taxonomic completeness |
+| **Ephemeral UI State** | Client-local, presentational-only state with no meaning outside the component that owns it | Accordion open/closed, Modal mount phase, hover/focus visual state | §4.3 |
+| **Form State** | Client-local state representing in-progress user input prior to Server Action submission, and the resolved result of that submission once returned | Free Audit form field values, validation error map, submission-pending flag | §4.4 |
+| **URL State** | State encoded in the request URL itself (query parameters, path segments) rather than in component memory | Pagination's `?page=N` (Phase 6 §17.3), a future filter parameter | §4.5 |
+
+**No Fifth Category — Global/Shared Application State Is Not a Recognized Category:** This taxonomy deliberately omits a "global state" category as a first-class citizen. Section 4.6 addresses why, and under what narrow, named exception a cross-cutting state need is handled without introducing one.
+
+### 4.3 Local Component State Governance
+
+**Restates §2.7's Governing Rule, Given Its Full Ownership Specification:** Ephemeral UI State is owned exclusively by the single component whose own rendering it affects — never lifted to a parent, never shared laterally between siblings, and never persisted beyond that component's mounted lifetime unless §4.9 explicitly names an exception. This is the direct operational meaning of §2.7's "state has no meaning outside the component's own rendering" test: if a second component needs to *know about* a piece of state, that state is by definition no longer purely ephemeral-and-local, and must be re-classified as Form State (§4.4), lifted via a controlled prop/callback pair (§2.6), or — in the one narrow case §4.6 permits — routed through Context.
+
+**Closed List of Ephemeral-UI-State-Bearing Components (Restates §1.7's Client-Tier Table, Now From the State-Ownership Angle):**
+
+| Component | Ephemeral State Owned | Boundary |
+|---|---|---|
+| FAQ Accordion | Which item(s) are expanded | Does not report this state upward — a parent Section has no need to know which FAQ item a user has expanded, consistent with §2.6's "only expose what a consumer needs to observe" principle |
+| Mega Menu / Mobile Drawer | Open/closed, active hover-panel | Same non-reporting boundary |
+| Modal / Drawer (general system) | Mount/unmount animation phase, focus-trap active state | Same non-reporting boundary — a Modal's *decision* to open is a controlled prop (its trigger is external), but its internal animation-phase bookkeeping is not |
+| Testimonial Carousel | Current slide index, auto-advance pause state | Same non-reporting boundary |
+| Search Overlay | Open/closed, raw (pre-debounce) query input | The *resolved* query and its results cross into Form-State-adjacent territory once a request is issued (§4.4's pattern applies to the search-execution portion specifically) |
+
+**The "Controlled Trigger, Uncontrolled Internals" Pattern:** Every component in the table above accepts an *external* signal for whether it should be open/active at all in some cases (e.g., a Modal's open state is typically a controlled prop set by whatever composed it, per §2.6), while its own internal mechanics (animation timing, focus-trap bookkeeping) remain uncontrolled, local state. This is not a contradiction of §2.6's controlled-state principle — it is the precise line §2.6 already drew between "business-meaningful" (whether the modal is open — a parent needs to know this to compose it correctly) and "purely presentational" (exactly how the modal animates open — no consumer needs this).
+
+### 4.4 Form State Architecture
+
+**Direct Integration Point With Phase 5B §7's Server Actions Architecture:** Form components (§1.7's Client-tier classification) own a well-defined, three-phase state lifecycle that maps exactly onto the Server Action Execution Flow already frozen in Phase 5B §7.3:
+
+```
+Phase 1 — Input Capture (purely local, ephemeral)
+  Raw field values as the user types, prior to any submission
+  attempt — owned entirely by the Form component, never
+  reported upward, never validated against Phase 5B §5's
+  schemas at this stage (client-side format hints, e.g., an
+  email-shaped-input affordance, are a UX nicety governed by
+  Design System Phase 4 §12.7, not a validation boundary)
+        │
+        ▼
+Phase 2 — Submission Pending (ephemeral, but consumer-visible)
+  A boolean-equivalent state entered the moment the Server
+  Action (Phase 5B §7.1) is invoked — this state IS reported
+  outward via the Loading States mechanism already frozen in
+  UX Phase 3 §22 and Design System Phase 4 §11.2 ("Loading"
+  button state), since the submit button's own disabled/
+  loading rendering depends on it
+        │
+        ▼
+Phase 3 — Resolved Result (received as props, not owned)
+  The ActionResult union (Phase 5B §7.5) returned from the
+  Server Action — this is NOT ephemeral UI state the Form
+  invents; it is the direct, typed return value of a Server
+  Action call, received and rendered, never independently
+  re-derived
+```
+
+**Why Phase 1 Is Never Validated Client-Side Against Phase 5B's Schemas:** Consistent with §2.9's ruling that component props are not a fifth validation boundary, raw in-progress form input is *never* run against the Zod schemas already established in Phase 5B §7.4 (`freeAuditFormSchema` and its siblings) on every keystroke — those schemas execute exactly once, server-side, at the Server Action's own input boundary (Phase 5B §5.2's second boundary), when the form is actually submitted. A Form component's Phase 1 state is free-form, untyped-against-the-domain-schema local state; only the eventual Server Action call subjects it to real validation, consistent with UX Phase 3 §14's own "validates on blur (not on every keystroke, to avoid premature error flashing)" rule — this document's state architecture and the already-approved UX behavior were never in tension, and Section 4.4 confirms this explicitly.
+
+**The `ActionResult` Union Governs Rendering Directly — No Intermediate State Translation:** Because Phase 5B §7.5's `ActionResult<T>` is already a complete, discriminated-union description of every possible submission outcome (`ok: true`, `VALIDATION_ERROR`, `RATE_LIMITED`, `UNKNOWN_ERROR`), a Form component's Phase-3 rendering is a direct `switch`/exhaustiveness-check over that already-typed value (Phase 5B §9.1's exhaustiveness-checking pattern, restated here at the component-rendering layer) — the Form component never re-encodes this union into a separate, parallel "form status" enum of its own invention, which would violate §2.2's derivation-not-invention principle applied to a Server Action's return type rather than a Phase 5B content model.
+
+**Idempotency Token Ownership (Restates Phase 5B §7.3, Given Its State-Layer Home):** The idempotency token generated on page render (Phase 5B §7.3) is Ephemeral UI State (§4.3) owned by the Form component itself, generated once at mount and never regenerated across re-renders within the same submission attempt — this is the one piece of Form-adjacent state that is genuinely local/ephemeral rather than following the three-phase lifecycle above, since it exists to protect the *submission mechanism*, not to represent user input or a submission result.
+
+### 4.5 URL State Architecture
+
+**Restates Phase 6 §17.3's Pagination Mechanism, Given Its Component-State Classification:** Where state is meaningfully part of *which resource* is being requested — Phase 6 §17.3's `?page=N` parameter being this system's sole current instance — that state lives in the URL itself, resolved server-side as part of the Page's own routing/rendering (Phase 5A §5.3's dynamic-segment handling, Phase 6 §17.9's resolution flow), never duplicated into client-side component state that could drift out of sync with the actual URL a user could bookmark, share, or navigate back to.
+
+**Governing Test for URL-vs-Ephemeral-State Classification:** A given piece of state belongs in the URL (not client memory) if and only if a user re-visiting the exact same URL later should see the identical state restored — pagination satisfies this test (Phase 6 §17's entire canonical/indexability architecture depends on this exact property); a Mega Menu's open/closed state does not (no user expects `/services` with the mega-menu pre-opened merely because it happened to be open during a prior visit). This test is the practical, component-layer application of the same self-referencing-canonical-URL discipline Phase 6 §4.2 Rule 6 already established at the routing layer — Section 4.5 does not introduce a new principle, it applies an existing one to a new decision point (component-state classification) that Phase 6 had no occasion to address directly.
+
+**No Client-Side Pagination State Management:** Consistent with the above, a paginated listing's "current page" is never held as `useState` inside a Composite or Section component — the Page itself receives the current page number from its own route parameters (Phase 5A §5.3) and passes the already-resolved, already-sliced result set (Phase 6 §17.9's resolution flow) down through the composition chain (§3.3) exactly as any other Server State would flow.
+
+### 4.6 Global/Shared State — Prohibition and Alternative
+
+**Default Prohibition, Restated From §4.2:** This architecture does not adopt a global state management library (Redux, Zustand, Jotai, or equivalent) as part of its component contract layer — consistent with Section 1.5's Governing Principle 4 (Technology Independence Within the Chosen Stack) and Phase 5A §2's already-fixed technology stack, which named no such library, this omission is deliberate: the overwhelming majority of this system's state needs are already satisfied by Server State flowing through props (§3.3) and Ephemeral UI State owned locally (§4.3) — introducing a global store would create exactly the "second, competing source of truth" this entire project has consistently avoided since Phase 5B §1.
+
+**The One Named Exception — Toast Notification Queue:** Design System Phase 4 §23's Toast Notification System is the single component in this system's entire inventory whose triggering context is **structurally unpredictable** — a toast may be triggered from a Form component's submission result (§4.4), from a future newsletter-signup confirmation (Phase 3 §21), or from any other Client-tier component at an arbitrary point in the composition tree, with no single, fixed parent positioned to own this state via ordinary props/callback lifting (§2.6) without that parent needing to exist at the root of every page purely to serve this one purpose.
+
+**Resolution — React Context, Narrowly Scoped, Not a General-Purpose State Library:** The Toast Notification queue is exposed via a single, dedicated React Context provider mounted once at the root layout level (Phase 5A §5.2), exposing a narrow, purpose-built interface (an "enqueue toast" function and the current queue for the Toast rendering surface itself to consume) — this is **not** a general-purpose global store available for arbitrary state; it is a single-purpose Context solving exactly the one structurally-unpredictable-trigger-point problem named above, and this architecture does not extend this pattern to any other state category without an equivalent, individually-justified exception being documented.
+
+**No Other Context Providers Are Authorized by This Section:** Consistent with Section 1.8's closed-set extensibility discipline, a future engineer identifying an apparent need for a second global Context must first demonstrate that need fails the URL-state test (§4.5) and the ordinary props/callback-lifting mechanism (§2.6) equally to how the Toast case does — genuine structural unpredictability of trigger point, not mere convenience — before this architecture accommodates it.
+
+### 4.7 Server State vs. Client State Boundary Enforcement
+
+**Restates §3.4's Serialization Constraint, Given Its State-Ownership Consequence:** Because Server State (§4.2) crosses the Server→Client boundary only as serializable props (§3.4), and because it is `readonly` at the type level (Phase 5B §4.7), a Client-tier component receiving Server State as props **cannot** copy that data into local `useState` and thereafter treat the local copy as the source of truth — doing so would create a client-side shadow copy capable of drifting from the actual Server State on re-fetch/revalidation (Phase 5A §7.3), reintroducing exactly the "second source of truth" risk this document has prohibited at every other layer (Phase 5B §1 Principle 3, restated at Phase 6 §9.5 for entity identity, and now restated here for the state-management layer specifically).
+
+**Derived-Value Prohibition (Extends the Above):** Where a Client-tier component needs a *computed* value from Server State props (e.g., a formatted display string derived from a `Service.name`), that computation occurs inline during render — it is never cached into a separate piece of `useState` that must then be kept manually in sync with its own source prop. This is the state-layer restatement of a broader principle already present throughout this document: derived data is recomputed from its authoritative source, never independently stored and synchronized (the identical reasoning behind Phase 6 §16.4's RSS GUID using immutable `id` rather than a separately-tracked value, and behind Phase 6 §9.5's single-computation-multiple-renderings principle for breadcrumbs).
+
+### 4.8 Context API Usage Governance
+
+**Restates §4.6's Single Authorized Instance, Given Its Full Technical Governance:** The Toast Context (§4.6) is the only Context provider this architecture authorizes, and its usage is bounded by the following rules, stated here rather than in §4.6 to keep that subsection focused on the *decision* to permit it and this subsection focused on *how* it is technically governed:
+
+1. **Mounted once, at the root layout** (Phase 5A §5.2) — never remounted per-page, since remounting would reset the queue and defeat its cross-page-navigation-surviving purpose.
+2. **Consumed only by the Toast-triggering call sites and the Toast rendering surface itself** — no other component reads from this Context for any purpose beyond enqueueing or rendering a toast; it is not repurposed as a general message bus.
+3. **Never used to pass Server State** — the Toast Context's payload shape is restricted to toast-specific data (message, variant per Design System Phase 4 §23, dismissal timing) and never used as a convenient channel to smuggle content-domain data past the ordinary props-based composition chain (§3.3).
+
+### 4.9 State Persistence Rules
+
+**No Client-Side Persistence (localStorage/sessionStorage) for Any State Category:** Consistent with the Artifact-layer prohibition already established elsewhere in this project's operating constraints (browser storage APIs are explicitly disallowed in the Artifacts execution environment) and, independently, with this architecture's own reasoning — Server State is re-derived fresh from each Page's own fetch (§3.3) and does not need persistence; Ephemeral UI State is, by definition (§4.2), meaningless beyond its owning component's mounted lifetime; Form State's Phase 1 input capture (§4.4) is explicitly *not* persisted across a page reload, since a reload re-invokes the Page's own render from scratch — no state category recognized by this taxonomy has a legitimate persistence need, and this architecture introduces no mechanism for it.
+
+**URL State Is the System's Only Form of "Persistence":** Where continuity across navigation or a page reload is genuinely required (§4.5's governing test), the URL itself — not browser storage, not a Context, not a cookie — is this architecture's sole persistence mechanism, consistent with pagination's existing `?page=N` pattern (Phase 6 §17.3) being the only state category in this system's current inventory requiring this property at all.
+
+### 4.10 State Validation Boundary
+
+**Restates and Confirms §2.9's Ruling, Extended to Every State Category Named in This Section:** No state category established in §4.2 introduces a validation boundary beyond the four already frozen in Phase 5B §5.2. Server State is validated once, at Phase 5B's Build-Time boundary, before it ever becomes a prop (§4.7 confirms it is never locally copied thereafter). Form State's Phase 1 is unvalidated by design (§4.4); its Phase 3 resolution is the *result* of validation already performed at the Server Action Input boundary (Phase 5B §5.2), not a new validation event. Ephemeral UI State (§4.3) and the Toast Context (§4.8) carry no content-domain data of the kind Phase 5B §5 governs at all, and therefore have no validation obligation under that layer's scope. Section 4 introduces no fifth validation boundary of its own, consistent with Section 1.5's Governing Principle 3 applied here as a confirming rather than novel conclusion.
+
+### 4.11 Section Resolution Summary
+
+Section 4 has established the deterministic state-ownership rules governing every stateful component contract Sections 5+ will specify:
+
+- All state in this system's component tree is classified into exactly four categories — Server State, Ephemeral UI State, Form State, and URL State — with no fifth, general-purpose category recognized (§4.2).
+- Ephemeral UI State is owned exclusively by its single bearing component and never reported upward beyond what a controlled "trigger" prop requires — the "controlled trigger, uncontrolled internals" pattern governs every Client-tier component in the closed inventory (§4.3).
+- Form State follows a strict three-phase lifecycle (unvalidated local input capture → consumer-visible submission-pending state → directly-rendered `ActionResult` union) integrating exactly with Phase 5B §7's already-frozen Server Action architecture, with client-side validation against Phase 5B §5's schemas explicitly never occurring (§4.4).
+- State that determines *which resource* is being requested lives in the URL, never in client memory, governed by an explicit bookmarkability/shareability test (§4.5).
+- Global state management is prohibited by default, with exactly one narrowly-scoped, individually-justified Context exception (Toast Notifications) permitted for its structurally-unpredictable trigger point, and no further exceptions authorized without equivalent justification (§4.6).
+- Server State received as props is never copied into local state or otherwise duplicated, and derived values are always recomputed from their authoritative source rather than cached and manually synchronized (§4.7).
+- The one authorized Context is bounded to three explicit technical rules preventing its misuse as a general-purpose data channel (§4.8).
+- No state category in this system uses browser storage or any other persistence mechanism beyond the URL itself, consistent with this project's broader constraints (§4.9).
+- No new validation boundary is introduced beyond the four already established in Phase 5B §5 — every state category's data integrity traces back to a validation event that has already occurred elsewhere in this architecture (§4.10).
+
+Every stateful component contract specified in the sections that follow is constructed in strict conformance with this state-ownership architecture.
+
+**End of Section 4 — State Management Architecture.**
+
+Ready to continue with Section 5.
+
