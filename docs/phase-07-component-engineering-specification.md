@@ -465,3 +465,187 @@ Every stateful component contract specified in the sections that follow is const
 
 Ready to continue with Section 5.
 
+Phases 1–6 and Phase 7 Sections 1–4 remain frozen and immutable. Continuing with Section 5.
+
+---
+
+# 5. Accessibility Implementation Architecture
+
+### 5.1 Purpose and Scope of This Section
+
+Section 1 named "accessibility implementation notes per component" as part of Phase 7's core purpose (§1.1) but deferred its specification. Design System Phase 4 §26 already established the complete set of accessibility *rules* governing this system (keyboard navigability, screen-reader semantics, color contrast, focus management, form accessibility, motion safety, alt-text discipline), and Phase 6 §1.2 already established that accessibility and crawlability are "the same underlying discipline viewed from two audiences." Neither of these prior specifications translated those rules into **per-component technical contracts** — which ARIA attributes a given component category must expose, how focus moves through a composed tree (Section 3's composition chain), and which accessibility behaviors are build-time enforceable versus which require manual verification. Section 5 closes this gap.
+
+**Governing Constraint, Restated From Phase 4 §2 and Phase 6 §1.2, Given Its Full Consequence Here:** No accessibility contract specified in this section may be satisfied by a mechanism that also degrades semantic correctness for non-human consumers (crawlers, structured-data parsers) — and, symmetrically, no discoverability mechanism already frozen in Phase 6 may be implemented in a way that degrades assistive-technology usability. This section and Phase 6's discoverability sections are two views of one shared underlying markup discipline, never competing implementations.
+
+### 5.2 Accessibility Contract Derivation Strategy
+
+**Direct Extension of §2.2's Props-Derivation Discipline to the Accessibility Domain:** Just as a component's props are never independently invented but derived from an already-frozen source (§2.2), a component's accessibility contract is never independently invented — it is derived from three closed sources:
+
+| Derivation Source | Governs | Mechanism |
+|---|---|---|
+| **Design System Phase 4 §26** | The complete rule set (keyboard nav, screen-reader semantics, contrast, focus, forms, motion, alt text) | Each rule in Phase 4 §26 is mapped, in this section, to the specific component tier(s) (§1.6) it applies to |
+| **UX Phase 3 §18** | Age-appropriate/general-capable-adult behavioral assumptions and the "avoid more than one question per response"-adjacent interaction-pacing principles already governing Form UX (Phase 3 §14) | Informs interaction-timing contracts (§5.5) rather than markup contracts directly |
+| **Phase 6 §14.8** | The explicit accessibility/discoverability alignment already established for images (mandatory `altText`, no cloaking, no context-specific alt-text variation) | Restated here as binding on the Image-rendering Primitive/Composite components specifically (§5.4) |
+
+**No Component Contract Introduces a New Accessibility Rule:** Consistent with Section 1.5's Governing Principle 1 (Inheritance Over Invention), every ARIA attribute, keyboard behavior, and focus rule specified in Sections 5.4–5.8 below traces to one of these three sources — this section performs translation and per-component assignment, never rule authorship.
+
+### 5.3 Semantic HTML Mapping Per Component Tier
+
+**Direct Implementation of Phase 6 §1.2's "Semantic HTML" Principle at the Component-Contract Layer:** Every component tier (§1.6) has a fixed, non-negotiable semantic-element mapping — a component's tier determines the category of native HTML semantics it must expose, closing the gap between Phase 6 §1.2's abstract principle ("no component may achieve a visual effect through non-semantic markup where a semantic equivalent exists") and an actual per-component rule.
+
+| Component | Required Semantic Element / Landmark | Cross-Reference |
+|---|---|---|
+| Header (Structural) | `<header>` containing a `<nav>` landmark | Phase 4 §26.1 |
+| Footer (Structural) | `<footer>` with `contentinfo` landmark role (native to `<footer>` when it is a direct child of `<body>`) | Phase 5B §3.13's `contentinfo` requirement, restated |
+| Breadcrumb (Structural) | `<nav aria-label="breadcrumb">` containing an ordered list (`<ol>`) of segments | Phase 4 §26.10, Phase 6 §8.5 |
+| Main page content (Page tier) | Exactly one `<main>` landmark per page | Phase 4 §26 general rule, restated here as a Page-tier contract obligation, not a Section-tier one — no individual Section component renders its own `<main>` |
+| Card (Composite) | A single wrapping semantic link (`<a>`) per Phase 4 §26.5's "single accessible link wrapping card content" rule | Phase 4 §26.5 |
+| Table of Contents (Composite) | `<nav>` landmark with its own distinguishing `aria-label` | Phase 4 §26.15 |
+| Form (Client) | Native `<form>`-equivalent semantics — noting the explicit prohibition on literal `<form>` tags in any React-Artifact-adjacent execution context does not apply to this project's actual Next.js codebase, where native form semantics are fully available and required | Phase 5B §7's Server Action model composes with native form submission semantics |
+| Modal / Drawer (Client) | `role="dialog"` (Modal) or an equivalent landmark-appropriate role for edge-anchored panels (Drawer) | Phase 4 §17–18 |
+| Search Overlay (Client) | `role="dialog"` per Phase 4 §26.13 | Phase 4 §26.13 |
+| FAQ Accordion (Client) | Each item's trigger is a native `<button>`, never a styled `<div>` with a click handler | Phase 4 §26.8 |
+
+**Single-`<main>`-Per-Page Enforcement Is a Page-Tier, Not Section-Tier, Obligation:** Because Sections compose sibling-fashion within a single Page (§3.5's "Compositional-composes-Compositional" sibling pattern), the `<main>` wrapper is rendered exactly once, by the Page itself, around the full sequence of composed Sections — no individual Section component renders its own `<main>` tag, which would violate this rule the moment two or more Sections were composed on the same page (the normal case, per every Scroll Journey in Phase 3 §5–10).
+
+### 5.4 ARIA Attribute Contracts
+
+**Restates Phase 4 §26's Component-Specific ARIA Rules, Consolidated Into a Single Cross-Component Reference:** Phase 4 §26 already specified individual ARIA requirements scattered across each component's own subsection (§26.1's `aria-expanded`, §26.8's `aria-expanded`/`aria-controls`, §26.10's `aria-current="page"`, §26.13's `dialog` role). Section 5.4 does not restate their substance — it confirms the **derivation discipline** (§5.2) applies uniformly and closes the one gap Phase 4 §26 left open: attributes for components introduced or refined after Phase 4 §26 was frozen (Phase 6 §8's full breadcrumb specification, Phase 6 §15's dynamic OG imagery, Phase 5B §7's Form/`ActionResult` architecture).
+
+| Component | Required ARIA Attribute(s) | Source |
+|---|---|---|
+| Mega Menu / Mobile Drawer trigger | `aria-expanded` (reflecting §4.3's Ephemeral UI State), `aria-controls` referencing the panel's `id` | Phase 4 §26.1 |
+| FAQ Accordion trigger | `aria-expanded`, `aria-controls`, focus retained on toggle | Phase 4 §26.8 |
+| Breadcrumb current segment | `aria-current="page"` on the final, non-interactive trail segment | Phase 6 §8.5, restated |
+| Icon-only Button (Primitive) | Mandatory `aria-label` — never label-less, per Phase 4 §11.1's "icon-only buttons are never label-less" rule, restated here as an ARIA-contract requirement rather than a general button-system rule | Phase 4 §11.1 |
+| Modal / Drawer / Search Overlay | `aria-modal="true"` alongside `role="dialog"`, plus a labeled title via `aria-labelledby` | Phase 4 §17, §18, §26.13 |
+| Toast Notification | `aria-live="polite"` for Success/Info variants, `aria-live="assertive"` reserved only for critical Error variants — restating Phase 4 §23's exact rule | Phase 4 §23 |
+| Form field with an inline error (§4.4's Form State Phase 3) | `aria-invalid="true"` and `aria-describedby` referencing the associated error message's `id` | Phase 4 §12.7, Phase 3 §14 |
+| Client Logo Bar images | No component-level ARIA beyond the mandatory `alt` text already enforced at the domain layer (Phase 5B §3.17, restated Phase 6 §14.3) — logos require no additional ARIA role beyond native `<img>` semantics | Phase 4 §26.12 |
+
+**Attribute Values Are Always Derived From Existing Props, Never Independently Computed:** Consistent with §2.2's derivation discipline, an `aria-expanded` value is always a direct reflection of the Ephemeral UI State already governed in §4.3 (never a second, separately-tracked boolean); an `aria-current="page"` value is always derived from the same breadcrumb-trail array Phase 6 §8.6 already resolves (never independently determined by the Breadcrumb component itself); an `aria-invalid` value is always a direct reflection of the `ActionResult`'s `fieldErrors` map already established in Phase 5B §7.5 and consumed per §4.4's Phase 3.
+
+### 5.5 Keyboard Interaction Contracts
+
+**Restates Phase 4 §26's General Keyboard-Navigability Rule, Given Its Per-Component-Category Specification:** Phase 4 §26 established "full site navigable via keyboard alone" as a general requirement; Section 5.5 specifies the exact key-to-action mapping per interactive component category, closing the gap between that general requirement and an implementable contract.
+
+| Component Category | Key | Action |
+|---|---|---|
+| Mega Menu, Mobile Drawer, Modal, Drawer, Search Overlay | `Escape` | Closes the component, restoring focus per §5.6 |
+| Mega Menu, Mobile Drawer | `Tab` / `Shift+Tab` | Moves focus through the panel's interactive children in document order; focus is trapped within an open Mobile Drawer/Modal per §5.6, but *not* within an open Mega Menu (a hover/click-expand panel, not a modal-equivalent focus trap, consistent with Phase 4 §26.2's distinct governance from §17's Modal System) |
+| FAQ Accordion trigger | `Enter` / `Space` | Toggles the associated panel's expanded state (native `<button>` behavior, §5.3, requiring no custom key-handling code beyond what semantic `<button>` elements provide by default) |
+| Search Overlay results list | `ArrowDown` / `ArrowUp` | Moves selection through type-ahead results; `Enter` activates the currently-selected result | Phase 4 §26.13
+| Table of Contents jump links | `Enter` | Native anchor-link activation (Phase 4 §26.15) — no custom key handling required, since jump links are genuine `<a href="#...">` elements |
+| Card (Composite) | `Enter` (when focused) | Native anchor-link activation, since the entire card is a single wrapping `<a>` per §5.3 — no custom key handling required |
+| Testimonial Carousel controls | `ArrowLeft` / `ArrowRight` (where the carousel variant is used at all, per §1.7's Server/Client split classification) | Moves to the previous/next slide; carousel auto-advance pauses on any keyboard interaction, consistent with Design System Phase 4 §26.6's pause-control mandate |
+
+**No Component Introduces a Custom Key Binding Outside This Table:** Consistent with §5.2's derivation discipline, a component contract specified in Sections 6+ may not introduce a keyboard interaction not already named here — where a genuinely new interaction pattern seems necessary, it is evidence the component's classification (§1.6) or its inclusion in Phase 4's closed inventory (§1.2) needs re-examination, not that this section's keyboard-contract table should be silently extended in a later section without being reconciled here first.
+
+### 5.6 Focus Management Architecture
+
+**Direct Extension of §4.3's "Focus-Trap Active State" Ephemeral UI State Category, Given Its Full Behavioral Contract:** Section 4.3 named focus-trap active state as an example of Ephemeral UI State owned internally by Modal/Drawer/Search-Overlay components without elaborating the trap's actual behavior — Section 5.6 specifies that behavior completely, extending Phase 5B §8.4's own restated rule ("focus trapped within an open modal while open... focus restored to trigger on close") from its original webhook-adjacent context into its full, general component contract.
+
+**The Three-Phase Focus Lifecycle, Closed and Uniform Across Every Focus-Trapping Component:**
+
+```
+Phase 1 — Trap Entry
+  On open (Modal, Drawer, Search Overlay — the three components
+  in this system's inventory whose Design System specification,
+  Phase 4 §17–18/§26.13, mandates a focus trap), focus moves
+  immediately to the first focusable element within the opened
+  panel, or to the panel's own labeled container if no
+  interactive child exists yet (e.g., a Search Overlay's input
+  field is typically this first-focus target)
+        │
+        ▼
+Phase 2 — Trap Containment
+  Tab/Shift+Tab cycles exclusively among the panel's own
+  focusable children — focus can never move to any element
+  outside the panel (including the page content beneath it)
+  while the panel remains open, satisfying Phase 4 §17's
+  "focus trapped within modal while open" requirement uniformly
+  across all three components
+        │
+        ▼
+Phase 3 — Trap Exit and Focus Restoration
+  On close (via Escape, per §5.5; via an explicit close
+  control; or via successful completion of the panel's
+  purpose, e.g., a search result selection), focus returns
+  to the exact DOM element that triggered the panel's opening
+  — never to a fixed fallback location (e.g., the page's
+  `<main>` landmark), and never left unset (which would cause
+  focus to silently reset to the document `<body>`, a known
+  screen-reader-disorienting failure mode this contract
+  explicitly prevents)
+```
+
+**Mega Menu Is Explicitly Excluded From This Focus-Trap Lifecycle:** Consistent with §5.5's distinction, the Mega Menu's hover/click-expand panel does not trap focus — a user tabbing past the mega-menu's own items continues naturally into the rest of the header/page rather than being contained, since Phase 4 §26.2 governs it as a navigational disclosure pattern, not a modal-equivalent interruption of the user's task.
+
+**Focus Restoration Ownership:** Consistent with §4.3's ownership rule (state is owned by the single component whose rendering it affects), the *triggering* element's identity is captured by the focus-trapping component itself at the moment of Phase 1 (trap entry) — it is never passed in as an external prop from whatever composed the Modal/Drawer/Search-Overlay, since the trapping component is the only one positioned to reliably know which element held focus immediately prior to its own opening.
+
+### 5.7 Screen Reader Announcement Strategy
+
+**Direct Extension of §4.6's Toast Context Governance, Given Its Announcement-Specific Contract:** The Toast Notification Context (§4.6, §4.8) already governs *how* toast state is shared across the component tree; Section 5.7 specifies the accessibility contract governing *how* a toast's appearance is announced to assistive technology, restating Phase 4 §23's `aria-live` rule (§5.4 above) and adding the one behavioral detail Phase 4 §23 flagged but did not fully specify: "auto-dismisses after a reasonable duration (must be long enough for screen-reader announcement to complete — accessibility-aware timing, not arbitrarily short)."
+
+**Minimum Announcement Window, Stated as a Contract Obligation:** A Toast's auto-dismiss timer does not begin until its content has been fully rendered into the live region — and its minimum duration is calculated relative to the announced message's length (a longer message requires a longer minimum window before auto-dismiss is permitted to fire), rather than a single fixed duration applied uniformly regardless of content length. This directly operationalizes Phase 4 §23's own flagged requirement into an enforceable per-instance rule rather than a single global constant that would under-serve longer messages or over-delay shorter ones.
+
+**Form Validation Error Announcement (Extends §4.4/§5.4's `aria-invalid`/`aria-describedby` Pairing):** Where a Server Action returns a `VALIDATION_ERROR` result (Phase 5B §7.5, §4.4's Form State Phase 3), the associated field-level error message is rendered into the DOM in a manner that is announced to a screen-reader user *without* requiring that user's focus to already be on the affected field — satisfied by the `aria-describedby` association already specified in §5.4, which causes assistive technology to announce the referenced error text at the moment focus lands on (or remains on) the invalid field, consistent with UX Phase 3 §14's "errors announced to assistive technology" requirement.
+
+**No Live-Region Usage Outside These Two Named Cases:** Consistent with §5.2's derivation discipline, `aria-live` regions in this system's component inventory are restricted to the Toast Notification System and Form validation-error announcement — no other component introduces a live region, since an unnecessary live region is a known source of assistive-technology announcement noise (the same "avoid... noise" concern already named in Design System Phase 4 §18 regarding decorative-image marking, restated here for its live-region equivalent).
+
+### 5.8 Reduced Motion Contract
+
+**Direct Extension of Phase 6 §13.6's Font-Swap Motion Discipline and Design System Phase 4 §24's Animation Principles, Given Its Per-Component Contract:** Phase 4 §24 already established that "every animated/motion component respects `prefers-reduced-motion` with a defined static fallback" as a general rule; Section 5.8 specifies which components carry this obligation and what their static fallback consists of.
+
+| Component | Motion Under Normal Conditions | `prefers-reduced-motion` Fallback |
+|---|---|---|
+| Modal / Drawer | Enter/exit slide or fade transition (Phase 4 §17–18) | Instant show/hide, no transition |
+| Toast Notification | Enter/exit transition (Phase 4 §23) | Instant show/hide |
+| Skeleton Loading | Shimmer/pulse animation (Phase 4 §22) | Static neutral block, per Phase 4 §22's own explicit fallback rule |
+| Testimonial Carousel | Slide transition between items | Instant swap, no transition — auto-advance itself is also disabled under reduced motion, not merely visually simplified, consistent with Phase 4 §26.6's pause-control mandate extended to this preference |
+| Stat/Metric Callout count-up | Optional count-up animation on scroll-into-view (Phase 4 §26.7) | Instant display of the final numeric value — restating Phase 4 §26.7's own explicit fallback rule |
+| Mega Menu / Mobile Drawer | Expand/collapse transition | Instant expand/collapse |
+
+**This Table Is Exhaustive Against the Closed Component Inventory:** Every component in this system's inventory (§1.2) carrying any motion at all is enumerated above — a component not appearing in this table has no motion requiring a reduced-motion fallback in the first place (e.g., a static Card's hover-elevation shadow transition, per Design System Phase 4 §13, is sufficiently minor that it is not classified as motion requiring a fallback under Phase 4 §24's own scoping, consistent with that section's original "meaningful micro-interactions... never decorative" framing).
+
+### 5.9 Non-Color-Dependent State Communication
+
+**Restates Phase 4 §26's "No Information Conveyed by Color Alone" Rule, Given Its Component-Contract Enforcement Point:** Every component whose rendering communicates a semantic state (success, warning, error, required-field, active-selection) pairs that color-coded state with a non-color signal — an icon (Phase 4 §9's Icon System, already established to inherit `currentColor` and pair with semantic tokens per Phase 4 §3.2) and/or text — never color alone. This restates a rule already fully specified in Phase 4 §3.2 and §26; Section 5.9's contribution is confirming this rule is a **component-contract obligation**, meaning every Composite or Client-tier component rendering Alert, Toast, form-validation, or Badge/Tag semantic-state content (Phase 4 §14–16, §23) must expose whatever prop is necessary (§2.2's derivation discipline) to render the paired icon/text, never a component contract that renders color-only state with no such prop available at all.
+
+### 5.10 Accessibility Validation Boundary
+
+**Restates §2.9's and §4.10's Validation-Boundary Discipline, Applied Here to Accessibility Specifically:** Consistent with this document's consistent practice of distinguishing build-time-enforceable checks from checks requiring manual or judgment-based review (a pattern established since Phase 5B §5.5 and repeated at every subsequent section's own validation subsection through Phase 6 §21), accessibility contracts split into two enforcement categories:
+
+**Build-Time/Automatable (consistent with Section 1.5's Governing Principle 3):**
+- Mandatory `alt` text presence on every image-rendering component (already enforced at the domain layer per Phase 5B §3.17/Phase 6 §14.9; restated here as a compile-time-checkable prop-required-ness obligation per §2.4's inheritance rule)
+- `aria-label` presence on every icon-only Button instantiation (§5.4)
+- Single-`<main>`-per-page structural lint (§5.3)
+- Heading-level-skip detection within a composed page (extends Phase 6 §12.9's `RichContentBlock` heading-sequence check, Phase 6 §12.9, from content-body scope to full-page-composition scope)
+
+**Manual/Judgment-Based (warning-tier or process-level, consistent with Phase 6 §21.7's severity-routing precedent):**
+- Actual color-contrast ratio verification against the Design System's finalized token values (Phase 4 §3.2) — a check requiring the tokens' concrete color values, which Phase 4 deliberately left as structural definitions rather than locked hex values (Phase 4's own closing note)
+- Genuine screen-reader walkthrough testing of focus-trap and announcement behavior (§5.6–5.7) — automatable to a degree via tooling, but ultimately requiring human verification of the *experience*, not merely the markup's presence
+- Reduced-motion fallback *quality* review (§5.8) — confirming the static fallback is genuinely non-disorienting, not merely present
+
+**No New Validation Mechanism Introduced:** Consistent with §4.10's confirming (not novel) conclusion, Section 5 introduces no fifth validation boundary beyond what Phase 5B §5.2 and Phase 6 §21's build-time/deployment-time/runtime/operational taxonomy already established — accessibility checks are distributed across that existing taxonomy's categories (build-time for the automatable items above, operational/manual per Phase 6 §21.8's checklist pattern for the judgment-based items) rather than requiring a separate accessibility-specific validation system.
+
+### 5.11 Section Resolution Summary
+
+Section 5 has established the deterministic accessibility contracts governing every component specified in Sections 6+:
+
+- Accessibility contracts are derived, never invented, from three closed sources — Design System Phase 4 §26, UX Phase 3 §18, and Phase 6 §14.8 — with translation and per-component assignment as this section's sole original contribution (§5.2).
+- Every component tier maps to a fixed, non-negotiable semantic HTML element or landmark, with exactly one `<main>` landmark owned at the Page tier, never the Section tier (§5.3).
+- A consolidated, closed table of required ARIA attributes per component category has been established, with every attribute's value always derived from an already-existing prop or state source, never independently computed (§5.4).
+- A closed table of keyboard-to-action mappings governs every interactive component, with no component contract permitted to introduce a key binding outside this table without reconciling it here first (§5.5).
+- Focus management follows a uniform three-phase lifecycle (trap entry, trap containment, trap exit with restoration) across all three focus-trapping components, with the Mega Menu explicitly excluded from trapping behavior (§5.6).
+- Screen-reader announcement is restricted to exactly two named live-region use cases — Toast Notifications (with content-length-aware minimum duration) and Form validation errors (via `aria-describedby`) — with no other component introducing a live region (§5.7).
+- A closed table of every motion-bearing component in the system's inventory and its required static fallback under `prefers-reduced-motion` has been established (§5.8).
+- Every component communicating semantic state pairs color with an icon and/or text, never color alone, enforced as a component-contract prop-availability obligation (§5.9).
+- Accessibility validation splits into build-time/automatable checks and manual/judgment-based checks, distributed across the existing Phase 5B/Phase 6 validation taxonomy rather than introducing a new boundary (§5.10).
+
+Every per-component contract specified in the sections that follow satisfies these accessibility obligations as a non-optional part of its complete engineering specification.
+
+**End of Section 5 — Accessibility Implementation Architecture.**
+
+Ready to continue with Section 6.
+
