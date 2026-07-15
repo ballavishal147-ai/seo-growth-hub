@@ -1383,3 +1383,698 @@ Every navigational and wayfinding component specified across Sections 1 through 
 
 Ready to continue with Section 15.
 
+Phases 1–6 and Phase 7 Sections 1–14 remain frozen and immutable. Continuing with Section 15.
+
+---
+
+# 15. Content Display Component Architecture
+
+### 15.1 Purpose and Scope of This Section
+
+Section 10.3's registry named `ServiceCard`, `IndustryCard`, `CaseStudyCard`, `BlogCard`, `TestimonialCard`, `TeamMemberCard`, `AuthorByline`, and the Client Logo Bar as the rendering components for the majority of Phase 5B §3's content entities, and Section 11.4–11.5 specified their shared Image-primitive and anchor-text-fidelity obligations — but, consistent with the gap Sections 12 through 14 closed for Form fields, Feedback/Overlay components, and Navigation/Wayfinding respectively, none of these Content Display components has yet received an individual props contract. Section 15 provides that treatment, completing the fourth of this document's per-category deep-dive sections, alongside the two remaining Composite-tier display units named in Design System Phase 4 §26 but not yet addressed anywhere in this document: Badge/Tag and Stat/Metric Callout.
+
+**Governing Constraint:** Consistent with Section 1.5's Governing Principle 1, this section introduces no new visual variant, card layout, or content field beyond what Design System Phase 4 §13–15 and §26.5–26.7/26.12/26.14 already established, and what Phase 5B §3's domain models already define. Section 15's sole contribution is the props-contract and composition specification connecting those already-frozen sources.
+
+### 15.2 Tier Classification and Closed Inventory
+
+**Closed, Eight-Member Set:** Card (in its five domain-specific variants: Service, Industry, Case Study, Blog, Testimonial), Badge, Tag, Stat/Metric Callout, Client Logo Bar, and Author Byline form this system's complete Content Display inventory — no ninth member exists in the approved scope. Consistent with §1.8's extensibility discipline, a future display pattern not among these requires a Phase 4 amendment before a corresponding contract could be added here.
+
+| Component | Tier (§1.6) | Server/Client (§1.7) | Governing Design System Section |
+|---|---|---|---|
+| Card (base contract, §15.3) | Composite | **Server** | Phase 4 §13 |
+| ServiceCard, IndustryCard, CaseStudyCard, BlogCard (Card variants) | Composite | **Server** | Phase 4 §13, §26.5 |
+| TestimonialCard | Composite | **Server** (static) / split with a **Client** carousel-control island where the carousel variant is composed (§1.7, restated) | Phase 4 §26.6 |
+| TeamMemberCard | Composite | **Server** | Phase 4 §26.5 (extended, per §10.3's registry) |
+| Badge | Primitive | **Server** | Phase 4 §14 |
+| Tag | Primitive | **Server** (static display) / **Client** where composed as an interactive filter control (§15.6) | Phase 4 §15 |
+| Stat/Metric Callout | Composite | **Server** (static) / narrowly-scoped **Client** island where the optional count-up animation is used (§5.8's table, restated) | Phase 4 §26.7 |
+| Client Logo Bar | Composite | **Server** | Phase 4 §26.12 |
+| Author Byline | Composite | **Server** | Phase 4 §26.14 |
+
+**Card's Base-Contract-Plus-Variants Structure Mirrors §12.3's and §13.5's Precedent:** Consistent with the shared-base-contract pattern already established for the six Form field primitives (§12.3) and for Modal/Drawer (§13.5), Card is specified here as one shared base contract (§15.3) extended by five named, domain-specific variants (§15.4) — never five independently-authored components duplicating the same underlying structural pattern (Phase 4 §13's "entire card clickable, title present" rule, already restated at §5.3, §7.9, and §11.5).
+
+### 15.3 Card Base Contract
+
+**The Shared Shape Every Card Variant Extends:**
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `href` | `string` | Required | System-derived canonical URL (Phase 6 §2.6/§4.10) — never independently constructed by the Card itself; passed down already-resolved from the composing Section (§3.3) |
+| `title` | `string` | Required | Content Domain Model — matches the source entity's own `name`/`title` field verbatim, per §2.3's never-renamed rule and §11.5's anchor-text-fidelity guarantee |
+| `image` | `MediaAsset` projection (Phase 5B §3.17) | Required | Content Domain Model, consumed via the shared `Image` primitive (§11.4) — every Card variant renders its image through that single primitive, never independently |
+| `excerpt` | `string` | Optional | Content Domain Model — the per-variant source field differs (§15.4), but the base contract's field name is uniform across all five variants, consistent with §2.10's cross-component naming-consistency rule |
+| `badge` | `{ label: string; tone: BadgeTone } \| null` | Optional | Content Domain Model, consumed via the shared `Badge` primitive (§15.5) |
+
+**Why `href` Is a Required Base-Contract Field Rather Than Internally Constructed:** Consistent with §11.5's ruling that anchor text sources from the same prop as the visible heading, and with §2.6's minimal-payload callback convention extended here to a data prop rather than a callback, `href` is threaded down from the Page's own canonical-URL resolution (Phase 6 §4.10) rather than being computed by the Card from a bare `slug` — this guarantees the Card's wrapping `<a>` (§5.3) always points to the identical canonical URL every other artifact (sitemap, structured data, breadcrumb) already asserts for that same entity, closing the loop on Phase 6 §9.5's cross-page identity guarantee at the component-props layer specifically.
+
+**No Card Variant Accepts a `variant`-Style Visual-Treatment Prop Beyond What §15.4 Names:** Consistent with §8.3's rule that styling-selection props are always closed unions of pre-approved options, the Card base contract itself carries no generic visual `variant` prop — visual differentiation between, say, a `ServiceCard` and a `BlogCard` is achieved by using five separately-named components (§15.2), each internally fixed to its own Design-System-approved layout, rather than by parameterizing one generic `Card` component with a content-type-selecting prop, consistent with Phase 4 §13's own enumeration of named variants rather than a single configurable card.
+
+### 15.4 Card Variant-Specific Extensions
+
+**Consolidating the Per-Entity Derivation Source for Each Variant's `excerpt` Field and Any Additional Fields, Restating §10.3's Registry:**
+
+| Variant | Source Entity (Phase 5B §3) | `excerpt` Source Field | Additional Props |
+|---|---|---|---|
+| `ServiceCard` | Service (§3.1) | `shortDescription` | None beyond base contract |
+| `IndustryCard` | Industry (§3.2) | `description` (truncated per Phase 6 §2.5's Tier 2 truncation rule) | None |
+| `CaseStudyCard` | Case Study (§3.9) | Not a bare `excerpt` — replaced by `headlineMetric: { value: string; label: string }`, rendered via the Stat/Metric Callout component (§15.7) composed internally within the Card | `industryTag`, `serviceTag` (both optional `string`, rendered via the shared `Tag` primitive, §15.6) |
+| `BlogCard` | Blog Post (§3.4) | `excerpt` (direct field match — the one variant where the base contract's field name and the source entity's field name are already identical) | `readTime: string` (computed field, Phase 5B §3.4), `category: string` (via `categoryId` resolution, rendered as a `Badge`) |
+| `TestimonialCard` | Testimonial (§3.10) | Not an `excerpt` — replaced by `quote: string`, `authorName: string`, `authorTitle: string \| null`, `companyName: string \| null` (Phase 5B §3.10's fields, direct projection) | `rating: number \| null` (rendered via a non-Card-specific Stat display, or omitted where `null`, per §2.4's optional-field-inheritance rule) |
+
+**`CaseStudyCard`'s `headlineMetric` Composition Is the One Instance of a Card Composing Another Composite Internally:** This is a deliberate, named exception to §3.5's "Composite-composes-Primitive" pattern — restating that section's own scope, §3.5 governs the *typical* case; `CaseStudyCard` composing a Stat/Metric Callout (§15.7, itself Composite-tier) is structurally permitted because both remain within the same tier (§1.6), and §3.2's one-directional composition rule ("a component in a lower tier never imports... a component in a higher tier") is not violated by same-tier composition, exactly as §3.5 already permitted for the Compositional-tier Section-composes-Section sibling case — this is that identical allowance, now confirmed as also applying within the Composite tier for this one named case.
+
+**`TestimonialCard`'s Divergence From the Base Contract's `excerpt`/`href` Fields:** Because a Testimonial is not independently page-routed (§10.3's registry), `TestimonialCard` is the one variant whose `href` is **optional**, not required (§2.4's narrowing/widening rule permits this specific field to diverge from the base contract's required status here, since the base contract itself is a shared *template*, not an immutable law applied without exception — restating §12.3's precedent that "per-primitive extensions" may adjust the shared base where the underlying entity genuinely differs) — where `href` is supplied, it points to the Testimonial's associated Case Study (Phase 5B §3.10's `relatedCaseStudyId`) rather than to the Testimonial itself, which has no independent canonical page.
+
+### 15.5 Badge Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `label` | `string` | Required | Content Domain Model (e.g., `BlogCategory.name`, Phase 5B §3.5) |
+| `tone` | `'neutral' \| 'featured'` | Optional, defaults `'neutral'` | Design System token union, Phase 4 §14 — restricted to exactly the two tones Phase 4 §14 authorizes ("Neutral background by default; may use Accent color for 'Featured'/'New' emphasis badges specifically") |
+
+**Badge Is Never Interactive, Confirmed as a Props-Contract Constraint:** Consistent with Phase 4 §14's "non-interactive... informational only" rule, Badge accepts no `onClick` or equivalent callback prop — this is a deliberate absence, not an oversight, distinguishing it structurally from Tag (§15.6), whose entire distinguishing purpose per Phase 4 §15 is potential interactivity.
+
+### 15.6 Tag Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `label` | `string` | Required | Content Domain Model (e.g., `BlogTag.name`, Phase 5B §3.6) |
+| `isActive` | `boolean` | Optional, defaults `false` | Ephemeral UI State (§4.3) where Tag is composed as an interactive filter control; absent/ignored where Tag is composed as static display (e.g., within `CaseStudyCard`'s `industryTag`, §15.4) |
+| `onToggle` | `(() => void) \| null` | Optional | Callback contract, §2.6 — presence of this callback is what determines whether the Tag instance renders as a Client-tier interactive button (`aria-pressed`, per §5.4's table extended here) or a Server-tier static span; its absence produces the Server-tier rendering path named in §15.2's table |
+
+**Tag's Dual Rendering Mode Is Determined by Prop Presence, Not a Separate `variant` Prop — Confirmed as Consistent With §2.4's Conditional-Requirement Precedent:** Restating the pattern already established for Alert's `onDismiss` (§13.3), Tag's interactive-versus-static rendering mode is derived from whether `onToggle` is supplied, rather than from an independent `isInteractive: boolean` prop that could disagree with `onToggle`'s own presence — the identical single-source-of-derivation discipline already applied to Alert's dismissibility and to `errorText`-driven form-field error states (§12.4).
+
+### 15.7 Stat/Metric Callout Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `value` | `string` | Required | Content Domain Model (e.g., `CaseStudy.headlineMetric.value`, or `ResultMetric.afterValue`, Phase 5B §3.9) |
+| `label` | `string` | Required | Content Domain Model (paired field) |
+| `context` | `string \| null` | Optional | Content Domain Model, restating Phase 4 §26.7's optional `context` field |
+| `enableCountUp` | `boolean` | Optional, defaults `false` | Generic field-state concern — governs whether the narrowly-scoped Client-tier count-up island (§15.2's table, §5.8's motion-fallback entry) is composed at all |
+
+**`enableCountUp`'s Reduced-Motion Interaction Is Owned Entirely by §5.8, Not Re-Specified Here:** Consistent with §5.8's already-complete table entry for this exact component ("Instant display of the final numeric value — restating Phase 4 §26.7's own explicit fallback rule"), Section 15.7 introduces no new motion-fallback logic — the `enableCountUp` prop's animated-vs-instant rendering choice is a purely presentational concern already fully governed by the accessibility contract established in Section 5, confirmed here only as the props-level trigger for that already-specified behavior.
+
+**Numeric Value Is Never Independently Parsed or Reformatted by the Component:** Consistent with §4.7's derived-value prohibition, `value` is rendered exactly as supplied (a pre-formatted string, e.g., `"+300%"`, already shaped correctly at its Phase 5B source per that field's own validation rules) — the Stat/Metric Callout component never applies its own number-formatting, locale-formatting, or unit-suffix logic, since doing so would constitute exactly the kind of component-invented derived state §4.7 already prohibits.
+
+### 15.8 Client Logo Bar Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `logos` | `MediaAsset[]` projection (Phase 5B §3.17) | Required | Content Domain Model — sourced from `Testimonial.companyLogo` values across a resolved Testimonial array, or a dedicated logo collection where one exists; each entry consumed via the shared `Image` primitive (§11.4) |
+| `isAnimated` | `boolean` | Optional, defaults `false` | Design System token union, Phase 4 §12.12's static-grid-vs-marquee choice — where `true`, composes the narrowly-scoped Client-tier marquee island; where `false` (the default, and the accessibility-preferred choice per Phase 4 §12.12's own stated preference for "static grid... for accessibility simplicity"), remains fully Server-tier |
+
+**Every `MediaAsset` Entry's `altText` Requirement Is Inherited, Not Restated as a New Rule:** Consistent with §11.4's "zero narrowing permitted on `altText`" rule, each logo in the `logos` array carries its own mandatory `altText` (company name, per Phase 6 §14.3's `type`-sensitivity guidance) — Client Logo Bar introduces no exception to this already-universal `Image`-primitive obligation.
+
+### 15.9 Author Byline Component Props Contract
+
+**Restates §10.3's Registry Entry and §9.4's Non-Interactive Classification, Given Its Full Contract:**
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `authorName` | `string` | Required | Content Domain Model, `Author.name` (Phase 5B §3.7) |
+| `authorPhoto` | `MediaAsset` projection | Optional (`Compact` variant) / Required (`Full` variant) | Content Domain Model, `Author.photo` — the one field in this section whose required-ness is variant-dependent rather than uniformly fixed, restating §12.3's per-member-extension precedent |
+| `publishDate` / `updatedDate` | `ISODateString` (paired, Phase 5B §2.2) | Required / Optional | Content Domain Model, inherited kernel fields |
+| `variant` | `'compact' \| 'full'` | Required | Design System token union, Phase 4 §26.14's named variant pair |
+| `authorBioHref` | `string \| null` | Optional | System-derived — resolves only where `Author.linkedTeamMemberId` (Phase 5B §3.7) is present, per Phase 6 §9.5's Person-entity-linkage rule; `null` for guest contributors, consistent with that same section's honest non-fabrication treatment of unlinked authors |
+
+**Date Formatting Is Locale-Independent Within This Contract, Consistent With §2.10's Naming-Fidelity Discipline:** `publishDate`/`updatedDate` are passed as raw `ISODateString` values (§2.2's branded-type derivation source, Phase 5B §4.3), with any human-readable formatting applied at render time by the component itself as a pure, stateless transformation of that single source value — never cached into a separately-formatted string prop, consistent with §4.7's "derived values are always recomputed from their authoritative source" rule.
+
+### 15.10 Validation Strategy
+
+Consistent with the three-category verification taxonomy established in Section 7.2:
+
+**Type-Level Verification (§7.3):** Confirms all five Card variants extend the shared base contract (§15.3) without introducing a duplicate, independently-typed `href`/`title`/`image` shape; confirms `TestimonialCard`'s `href` is correctly typed as optional against the base contract's otherwise-required field, per §15.4's documented exception; confirms Badge's `tone` union admits no third value beyond `neutral`/`featured`.
+
+**Behavioral Verification (§7.4):** Confirms every Card variant's rendered anchor text matches its `title` prop exactly, per §11.5's fidelity guarantee, now checked across all five named variants specifically rather than the Card system in the abstract; confirms Tag's rendering mode (interactive vs. static) correctly follows `onToggle`'s presence/absence with no divergent `aria-pressed` state; confirms Stat/Metric Callout's count-up island correctly falls back to instant-display under `prefers-reduced-motion` per §5.8's already-established table.
+
+**Operational Verification (§7.5):** Extends Checklist D with one additional item specific to this section:
+- [ ] Confirm any new Content Display usage selects the correct closed-inventory member (§15.2) rather than introducing a bespoke card/badge/tag rendering, and confirms `CaseStudyCard`'s internal Stat/Metric Callout composition (§15.4) is the only sanctioned same-tier Composite-composes-Composite instance in the new usage, per §3.5's exception scope
+
+### 15.11 Section Resolution Summary
+
+Section 15 has established the deterministic engineering contracts governing the eight-member Content Display inventory, completing this document's fourth closed-category deep-dive following Sections 12 (Form fields), 13 (Feedback/Overlay), and 14 (Navigation/Wayfinding):
+
+- Card, Badge, Tag, Stat/Metric Callout, Client Logo Bar, and Author Byline form a closed inventory, with Card specified as one shared base contract extended by five named domain-specific variants rather than independently duplicated components (§15.2–15.3).
+- Each Card variant's `excerpt`-equivalent field and any additional props are mapped to their exact Phase 5B source entity and field, with `CaseStudyCard`'s internal Stat/Metric Callout composition identified as a deliberate, narrowly-scoped exception to the ordinary Composite-composes-Primitive pattern, and `TestimonialCard`'s optional `href` identified as a deliberate exception to the base contract's otherwise-required field (§15.4).
+- Badge is confirmed permanently non-interactive by contract; Tag's interactive-versus-static rendering is derived exclusively from `onToggle`'s presence, following the identical single-source-of-derivation discipline already established for Alert and form-field error states (§15.5–15.6).
+- Stat/Metric Callout's numeric `value` is rendered verbatim with no component-level reformatting, and its count-up behavior defers entirely to the motion-fallback contract already established in Section 5.8 (§15.7).
+- Client Logo Bar and Author Byline complete this inventory, with Author Byline's `authorPhoto` requirement and `authorBioHref` resolution both correctly varying by variant and by the already-established Author/Team-Member linkage rule from Phase 6 §9.5 (§15.8–15.9).
+
+Every content-display component specified across Sections 1 through 14 is now fully specified down to its individual props-contract level.
+
+**End of Section 15 — Content Display Component Architecture.**
+
+Ready to continue with Section 16.
+
+Phases 1–6 and Phase 7 Sections 1–15 remain frozen and immutable. Continuing with Section 16.
+
+---
+
+# 16. Layout Pattern Component Architecture
+
+### 16.1 Purpose and Scope of This Section
+
+Design System Phase 4 §6 established container widths, breakpoints, grid columns, and gutter tokens; Phase 4 §5 established the 8px spacing system; UX Phase 3 §4 established the Scroll Behaviour Strategy's "Section Rhythm" (Value → Proof → CTA, repeating at predictable intervals); Phase 5A §5.2 established the layout-nesting hierarchy (`app/layout.tsx` → `app/(marketing)/layout.tsx`). None of these prior specifications translated into a **props contract for the reusable structural components** that actually arrange page content into these already-approved widths, columns, and rhythms. Section 16 provides that treatment, completing the fifth of this document's per-category deep-dives, addressing the one category of component this system relies upon most heavily yet has, until now, only referenced implicitly (§3.5's "the Section owns the grid/layout arrangement," §8.6's "a Card grid's column-count change... is expressed as responsive Tailwind utility classes on the composing Section's own layout").
+
+**Governing Constraint:** Consistent with Section 1.5's Governing Principle 1, this section introduces no new container width, breakpoint, spacing token, or grid-column count beyond what Design System Phase 4 §5–6 already established. Section 16's sole contribution is naming the **components** that apply those already-frozen tokens structurally, and specifying their props contracts, composition boundaries, and tier classifications exactly as every preceding per-category section has done for its own domain.
+
+### 16.2 Tier Classification and Closed Inventory
+
+**Closed, Five-Member Set:** Page Shell, Container, Grid Layout, Split Layout, and Sidebar/Content Layout form this system's complete Layout Pattern inventory. Unlike every prior per-category section (Sections 12–15), these five components have no direct, individually-named counterpart in Design System Phase 4's Component Inventory (Phase 4 §26) — they are instead the **structural application layer** of Phase 4 §6's Layout System tokens, occupying a position analogous to how the `Image` primitive (§11.4) was identified as the single shared implementation point for a rule (Phase 6 §13.5's image-delivery discipline) that Design System Phase 4 stated as a system-wide requirement rather than as one named component. Consistent with §1.8's extensibility discipline, a future layout pattern not among these five requires a Design System Phase 4 amendment to §6 before a corresponding contract could be added here.
+
+| Component | Tier (§1.6) | Server/Client (§1.7) | Governing Design System Source |
+|---|---|---|---|
+| Page Shell | Structural | **Server** | Phase 4 §6.1–6.2, Phase 5A §5.2 |
+| Container | Primitive | **Server** | Phase 4 §6.1 |
+| Grid Layout | Primitive | **Server** | Phase 4 §6.3–6.4 |
+| Split Layout | Primitive | **Server** | Phase 4 §6.3, inferred pairing pattern (Hero's text/image split, per UX Phase 3 §5) |
+| Sidebar/Content Layout | Primitive | **Server** — the sidebar's *content* (e.g., a Table of Contents' active-highlight island, §14.7) may itself be Client-tier, but the Sidebar/Content Layout wrapper that positions it is not | Phase 4 §17 (of the Design System Component Inventory numbering — "sticky sidebar on desktop only")
+
+**Why All Five Are Primitive or Structural, Never Composite or Compositional:** Consistent with §1.6's tier definitions ("Primitive: no domain-model awareness; pure presentation of Design-System tokens"), every component in this inventory is domain-content-agnostic by nature — a Grid Layout has no awareness of whether it is arranging `ServiceCard` or `BlogCard` instances (§15's Content Display inventory), consistent with §1.6's One-Directional Composition Rule ("a component in a lower tier never imports or depends upon a component in a higher tier"): Layout Pattern components sit *beneath* Composite-tier content components in the dependency direction, composing whatever `children` (§2.5) a higher tier supplies, never the reverse. Page Shell alone is classified Structural rather than Primitive, since — like Header and Footer (§14.3, §14.5) — it is composed exactly once, at the layout level (§3.2's exception), rather than repeatedly per-Section.
+
+### 16.3 Page Shell Component Props Contract
+
+**Restates and Completes Phase 5A §5.2's Layout Hierarchy, Given Its Full Props Consequence:** Page Shell is the component-layer realization of `app/(marketing)/layout.tsx` (Phase 5A §5.2) — the single wrapper composing Header and Footer (§14.3, §14.5) around whatever Page-level content is nested within it.
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `children` | `ReactNode` | Required | Composition slot, §2.5 — the entire Page-level content tree (§3.2's Page → Section chain) |
+| `navigation` | `Navigation` (Phase 5B §3.12) | Required | Content Domain Model — resolved once at this layout level and passed directly into the composed Header (§14.3), never re-fetched per-Page |
+| `footer` | `Footer` (Phase 5B §3.13) | Required | Content Domain Model — identical single-resolution pattern, passed into the composed Footer (§14.5) |
+
+**Page Shell Accepts No Visual-Variant Prop:** Consistent with §2.5's Structural/singleton composition rule and §16.2's classification of Page Shell alongside Header/Footer, Page Shell renders identically across every marketing page — it has no `variant` prop, no background-treatment override, and no per-page customization surface of any kind, since Phase 5A §5.2 already established the `(marketing)` layout as a single, uniform shell specifically so a future `(portal)` route group (Phase 5A §5.2's forward-looking note) can be added later "with its own layout/auth boundary — without restructuring existing routes" — a Page-Shell-level variant prop would undermine that already-stated forward-compatibility rationale by conflating what should remain two entirely separate layout components.
+
+**Single-`<main>`-Ownership, Restating §5.3:** Consistent with §5.3's rule that "the `<main>` wrapper is rendered exactly once, by the Page itself," Page Shell is the component that structurally provides the boundary *around which* that single `<main>` landmark is placed — Page Shell itself renders the `<header>`/`<footer>` landmarks (via its composed Header/Footer children, §5.3's table) and leaves the `<main>` landmark's own opening/closing to whatever Page-tier component supplies as `children`, meaning Page Shell's `children` prop is understood, by convention rather than by a separate enforced rule, to already contain that `<main>`-wrapped content — Section 16.3 does not introduce a competing ownership claim over the `<main>` landmark itself.
+
+### 16.4 Container Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `size` | `'sm' \| 'md' \| 'lg' \| 'xl' \| '2xl'` | Optional, defaults `'xl'` | Design System token union, Phase 4 §6.1's five named container-width tokens (`container-sm` through `container-2xl`) |
+| `children` | `ReactNode` | Required | Composition slot, §2.5 |
+
+**Container Is the Sole Mechanism Enforcing Phase 4 §6.4's Max-Width/Reading-Measure Rule:** Restating Phase 4 §6.4's "Content Max-Width Enforcement: No text block exceeds `container-md` width regardless of parent section width," any component rendering long-form prose (Blog Post body, per §14.7's Table-of-Contents-adjacent context) is composed **within** a Container instance set to `size="md"`, never left to inherit an ambient full-bleed width from its parent Section — this is the component-level enforcement point for a rule Phase 4 §6.4 stated as a general constraint without naming which component was responsible for applying it; Section 16.4 now names Container as that component.
+
+**Container Never Accepts a Custom Pixel-Width Override:** Consistent with §8.2's prohibition on style-override escape hatches, Container's `size` prop is a closed union against Phase 4 §6.1's five named tokens — there is no `customMaxWidth` or `style` prop permitting an arbitrary width value, ensuring every page in this system draws from the identical, finite set of approved reading/content widths.
+
+### 16.5 Grid Layout Component Props Contract
+
+**Restates §8.6's Already-Established Responsive Discipline, Given Its Full Component Ownership:** Section 8.6 stated that "a Card grid's column-count change... is expressed as responsive Tailwind utility classes on the composing Section's own layout" — Section 16.5 now names Grid Layout as the specific component embodying that responsibility, correcting no prior claim but completing it with an actual props contract.
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `columns` | `{ base: 1; md?: 2; xl?: 3 }`-shaped responsive token object, or a fixed simpler union `1 \| 2 \| 3` for non-responsive cases | Optional, defaults to Phase 4 §6.4's "3-column at `xl`+, 2-column at `md`–`lg`, 1-column below `md`" card-grid default | Design System token union, Phase 4 §6.3–6.4 |
+| `gap` | `'sm' \| 'md'` | Optional, defaults to Phase 4 §6.3's gutter-width default (`space-6` mobile / `space-8` tablet-desktop) | Design System token union, Phase 4 §5/§6.3 |
+| `children` | `ReactNode` | Required | Composition slot, §2.5 — typically a mapped array of Card instances (§15.4), per §3.5's Section-composes-Composite pattern |
+
+**Grid Layout Is Content-Count-Agnostic — It Never Receives or Reasons About How Many Children It Has:** Consistent with §16.2's domain-content-agnostic classification, Grid Layout's `children` prop is an ordinary composition slot, not a `items: T[]` array the component itself iterates — the mapping from a resolved entity array (e.g., a Service page's related Case Studies, §3.3) to individual Card instances occurs at the composing Section level (§3.5), with Grid Layout receiving only the already-mapped result as `children`; this keeps Grid Layout genuinely reusable across any content type without requiring it to know anything about Phase 5B's domain models, consistent with its Primitive-tier classification (§16.2).
+
+**Grid Layout Never Duplicates Container's Max-Width Responsibility:** Consistent with §1.5's Governing Principle 5 (No Duplication Across Component Categories), Grid Layout governs only column arrangement and inter-item gutter spacing (Phase 4 §6.3) — it does not itself constrain overall width, since that remains Container's exclusive responsibility (§16.4); a composing Section nests a Grid Layout *within* a Container where outer-width constraint is needed, rather than either component absorbing the other's concern.
+
+### 16.6 Split Layout Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `primary` | `ReactNode` | Required | Named composition slot, §2.5 — the "primary" region (e.g., a Hero's headline/CTA text block) |
+| `secondary` | `ReactNode` | Required | Named composition slot, §2.5 — the "secondary" region (e.g., a Hero's accompanying image) |
+| `ratio` | `'50-50' \| '60-40' \| '40-60'` | Optional, defaults `'50-50'` | Design System token union, derived from Phase 4 §6's grid-column arithmetic rather than a freestanding new token — a `60-40` split is expressed internally as a 12-column-grid allocation (7/5 columns), never as an independently-defined percentage value outside the token system |
+| `reverseOnMobile` | `boolean` | Optional, defaults `false` | Design System responsive-behavior concern, Phase 4 §25's mobile single-column-stacking rule extended here to govern *which* of the two regions stacks first |
+
+**Split Layout Is This System's One Named-Slot Component Beyond Modal/Drawer's `children`-Only Pattern, and Its Justification Is Restated From §3.6's Governing Test:** Consistent with §3.6's explicit test ("varies via composition slots only when the variation is a difference in structure itself... which region exists"), Split Layout genuinely has two independently-composable, structurally-distinct regions (unlike Modal, whose single `children` slot was sufficient per §13.4) — this is the one Layout Pattern component satisfying §3.6's named-slot threshold, and Section 16.6 confirms this is not a violation of that section's "restraint" principle but the specific, anticipated case that principle's own test was designed to correctly admit.
+
+**Split Layout Never Assumes Content Type for Either Slot:** Consistent with §16.2's domain-agnostic classification, `primary` and `secondary` accept any composed content — Split Layout does not, for example, require `secondary` to contain an `Image` primitive specifically, even though that is its most common use (a Hero's image pairing); a future Split Layout instance pairing two text blocks, or a text block and a Stat/Metric Callout (§15.7), is equally valid under this same contract.
+
+### 16.7 Sidebar/Content Layout Component Props Contract
+
+**Restates Design System's "Sidebar Utilization" Rule and Section 14.7's Table-of-Contents Placement, Given Its Own Dedicated Wrapper Contract:**
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `sidebar` | `ReactNode` | Required | Named composition slot, §2.5 |
+| `content` | `ReactNode` | Required | Named composition slot, §2.5 |
+| `sidebarPosition` | `'left' \| 'right'` | Optional, defaults `'right'` | Design System token union |
+| `isSidebarSticky` | `boolean` | Optional, defaults `true` on desktop-and-above viewports only, per the responsive-token-bound behavior already governing §14.7's Table of Contents | Design System responsive-behavior concern |
+
+**Mobile Collapse Behavior Is Not a Configurable Prop — It Is a Fixed, Token-Bound Rule:** Restating Design System's existing "Multi-Column Grids... reflow to single-column on mobile without information loss" principle (already applied generally in Phase 4's Responsive Design Rules) as it specifically applies here, Sidebar/Content Layout's two-region arrangement collapses to a single-column stack on mobile viewports (sidebar content moving beneath the main content, per the same "Collapsible inline (mobile)" pattern already named for Table of Contents in Phase 4 §26.15) unconditionally — there is no prop permitting a consuming context to preserve a side-by-side arrangement on mobile, consistent with §8.6's rule that responsive variation is expressed through the token-bound utility mechanism, never a component-level override.
+
+**Sidebar/Content Layout Is the Component-Layer Home for Every Instance of Phase 4's "Sticky Sidebar" Pattern, Not Solely Table of Contents:** Although §14.7's Table of Contents is this system's most prominent current consumer, Sidebar/Content Layout is named and specified independently of that specific component precisely so it remains reusable for any future sidebar-content pairing (e.g., a hypothetical future filter panel alongside a Location hub listing) without requiring a new, separately-specified layout wrapper — consistent with §1.8's "existing-variant-first" extensibility discipline.
+
+### 16.8 Composition Rules Specific to Layout Pattern Components
+
+**Layout Pattern Components Are Composed by Section-Tier Components, Never Directly by Composite-Tier Components:** Extending §3.5's tier-pairing table with the specific pattern this section's inventory participates in, a Grid Layout or Split Layout is always composed by a Compositional/Section-tier component (e.g., a "Related Services" Section composing a Grid Layout around its mapped `ServiceCard` array) — a Composite-tier component (e.g., `ServiceCard` itself) never internally composes a Grid Layout or Container, since doing so would mean a single Card attempting to arrange *other* Cards, a responsibility §1.4's single-responsibility principle assigns exclusively to the Section tier.
+
+**Container May Be Composed at Either the Section or Page Tier, the One Deliberate Flexibility in This Inventory:** Unlike Grid Layout and Split Layout (Section-composed only), Container's width-constraining purpose is occasionally needed at the whole-Page level (e.g., constraining an entire simple utility page like a Legal page, per IA Phase 2 §1, which may not decompose into multiple distinct Sections at all) — Section 16.8 confirms this as the one named exception to the otherwise-uniform "Layout Patterns are Section-composed" rule, consistent with §3.2's own acknowledgment that the Page tier retains ultimate sequencing authority over its composed Sections and may, in the simplest page templates, compose a Layout Pattern component more directly.
+
+**No Layout Pattern Component Ever Composes a Structural-Tier Component:** Consistent with §14.9's composition-ownership summary, Grid Layout, Split Layout, Container, and Sidebar/Content Layout never compose Header, Footer, or Breadcrumb internally — those remain exclusively Page-Shell-level (Header/Footer, §16.3) or Page-level (Breadcrumb, §14.9) responsibilities, never nested inside a generic layout wrapper, which would blur the Structural tier's own already-established composition boundaries (§3.2).
+
+### 16.9 Accessibility Implications
+
+**Landmark Neutrality — Layout Pattern Components Introduce No Semantic Landmark of Their Own:** Consistent with §5.3's tier-to-semantic-element mapping (which names no Layout Pattern component, since none was yet specified), Container, Grid Layout, and Split Layout render as plain, non-landmark structural wrappers (`<div>`-equivalent) — they do not introduce a `<section>`, `<nav>`, or other landmark role, since doing so would risk landmark proliferation inconsistent with §5.3's deliberately sparse, meaningful-landmarks-only discipline; any genuine landmark semantics belong to the Compositional/Section-tier component composing these wrappers, not to the wrappers themselves.
+
+**Sidebar/Content Layout's Reading-Order Obligation:** Consistent with Design System's already-established accessibility discipline (Phase 4 §26, restated Section 5) that visual positioning must never diverge from logical/DOM reading order for non-visual consumption, Sidebar/Content Layout's `sidebarPosition` prop (§16.7) governs *visual* placement only (via responsive utility classes, §8.6) — the underlying DOM order of `sidebar` versus `content` remains fixed and consistent regardless of `sidebarPosition`'s value, ensuring a screen-reader user's traversal order never silently reverses based on a purely visual-layout prop, directly extending Section 12.6's already-established "context preservation... no reliance on visual/layout context" principle (originally stated for GEO/retrieval purposes) to this component's accessibility contract specifically.
+
+**Grid Layout's Reading Order Under Responsive Reflow:** Restating the identical principle for Grid Layout's column-count changes (§16.5) — a 3-column-to-1-column responsive reflow (Phase 4 §6.4) never reorders the underlying `children` sequence; CSS Grid/Flexbox's visual reflow is achieved without altering DOM order, consistent with the same reading-order-neutrality obligation just established for Sidebar/Content Layout.
+
+### 16.10 Validation Strategy
+
+Consistent with the three-category verification taxonomy established in Section 7.2:
+
+**Type-Level Verification (§7.3):** Confirms Container's `size` prop admits only the five closed Phase 4 §6.1 tokens; confirms Grid Layout's `columns` prop cannot express a value outside Phase 4 §6.4's already-approved column-count set; confirms Split Layout's `ratio` prop resolves to a valid 12-column-grid allocation with no fractional or arbitrary value permitted.
+
+**Behavioral Verification (§7.4):** Confirms no long-form-prose-rendering component (Blog Post body, per §16.4) ever renders outside a `size="md"` Container instance; confirms Sidebar/Content Layout's mobile collapse correctly reflows to single-column without altering DOM order (§16.9); confirms Grid Layout's responsive column-count change produces no visible layout shift inconsistent with Phase 6 §13.2's CLS target.
+
+**Operational Verification (§7.5):** Extends Checklist D with one additional item specific to this section:
+- [ ] Confirm any new page template composes its structural arrangement exclusively from this section's five-member Layout Pattern inventory (§16.2) — Page Shell, Container, Grid Layout, Split Layout, Sidebar/Content Layout — rather than introducing bespoke, one-off structural markup at the Section-composition level
+
+### 16.11 Section Resolution Summary
+
+Section 16 has established the deterministic engineering contracts governing the five-member Layout Pattern inventory, completing this document's fifth closed-category deep-dive following Sections 12 (Form fields), 13 (Feedback/Overlay), 14 (Navigation/Wayfinding), and 15 (Content Display):
+
+- Page Shell, Container, Grid Layout, Split Layout, and Sidebar/Content Layout form a closed inventory serving as the structural application layer of Design System Phase 4 §5–6's already-frozen tokens, with no direct individual Phase 4 §26 counterpart, distinguishing this section's derivation pattern from every prior per-category section (§16.2).
+- Page Shell's props are restricted to `children`, `navigation`, and `footer`, with no visual-variant surface, preserving the forward-compatibility rationale already stated in Phase 5A §5.2 for a future `(portal)` route group (§16.3).
+- Container is named as the sole enforcement point for Phase 4 §6.4's max-width/reading-measure rule, admitting no custom-width override (§16.4).
+- Grid Layout is confirmed as the specific component realizing §8.6's already-stated responsive card-grid discipline, remaining content-count-agnostic and never duplicating Container's width responsibility (§16.5).
+- Split Layout is identified as this system's one Layout Pattern component satisfying §3.6's named-slot threshold, with its `ratio` prop expressed through Phase 4's existing grid-column arithmetic rather than a freestanding new token (§16.6).
+- Sidebar/Content Layout generalizes the sticky-sidebar pattern already named for Table of Contents (§14.7) into its own reusable, independently-specified wrapper, with mobile-collapse behavior fixed and non-configurable (§16.7).
+- Composition is Section-tier-owned for Grid/Split Layout and Sidebar/Content Layout, with Container alone permitted flexibility to compose at either the Section or Page tier; no Layout Pattern component ever composes a Structural-tier component (§16.8).
+- Every Layout Pattern component is landmark-neutral, and both Grid Layout and Sidebar/Content Layout carry an explicit reading-order-neutrality obligation ensuring visual reflow never diverges from DOM/logical order (§16.9).
+
+Every reusable structural arrangement pattern referenced implicitly across Sections 1 through 15 is now fully specified down to its individual props-contract level.
+
+**End of Section 16 — Layout Pattern Component Architecture.**
+
+Ready to continue with Section 17.
+
+Phases 1–6 and Phase 7 Sections 1–16 remain frozen and immutable. Continuing with Section 17.
+
+---
+
+# 17. Animation & Motion Component Architecture
+
+### 17.1 Purpose and Scope of This Section
+
+Design System Phase 4 §24 established the Animation Principles governing this entire system ("every animation must communicate state, feedback, or spatial relationship... zero purely decorative motion"), the closed list of sanctioned micro-interactions, the explicit prohibition list, and the timing/easing standards. Phase 6 §13.2/§13.6 extended these into Core Web Vitals-conscious constraints (font-swap CLS mitigation, `prefers-reduced-motion` as a first-class delivery concern). Section 5.8 of this document translated that principle into a per-component motion/fallback table for the six components already identified as motion-bearing (Modal, Toast, Skeleton, Testimonial Carousel, Stat/Metric Callout, Mega Menu/Mobile Drawer). None of these prior specifications, however, named the **reusable wrapper components** through which motion is actually applied, nor specified their props contracts, tier classification, or composition boundaries — motion has so far been treated as an *attribute* of other components (§5.8's table) rather than as its own component category. Section 17 provides that treatment, completing the sixth of this document's per-category deep-dives.
+
+**Governing Constraint, Restated From Phase 4 §24 and Given Its Strictest Possible Reading Here:** This section introduces no new animation style, no new easing curve, no new timing value, and no new motion behavior of any kind — every prop, variant, and fallback rule specified below is a direct, mechanical translation of Design System Phase 4 §24's already-closed sanctioned-use list and Section 5.8's already-complete per-component table into a reusable component contract. Where this section's own governing test (§17.2) would require a motion behavior not already named in one of those two sources, that behavior is out of scope for Phase 7 and must be referred back to Phase 4 for amendment — consistent with every other per-category section's treatment of its own domain boundary (§12.1, §13.1, §14.1, §15.1, §16.1).
+
+### 17.2 The Governing Test — Motion Components Wrap Existing Behavior, They Do Not Invent It
+
+**Restating Phase 4 §24's Sanctioned-Use List as This Section's Closed Input Set:** Phase 4 §24 named exactly seven sanctioned micro-interaction categories — button hover/active feedback, card elevation on hover, accordion expand/collapse, form-field focus transitions, toast enter/exit, modal/drawer enter/exit, skeleton shimmer, and the count-up-on-scroll-into-view exception — plus an explicit, closed prohibition list (auto-playing carousels, parallax, decorative background animation, bouncing/attention-seeking CTA animation, animated page transitions delaying content). Section 17.2 states the governing test every component specified in this section must satisfy: **a Motion component wraps an already-sanctioned behavior already assigned to an already-named component elsewhere in this document; it never introduces a motion behavior an earlier phase has not already approved.**
+
+**Why This Section Exists Despite That Constraint — Naming the Shared Implementation Point, Not a New Capability:** Consistent with the reasoning already established for the `Image` primitive (§11.4 — "One Image Primitive, Consumed by Every Higher-Tier Component — No Component Re-Implements Image Rendering") and for the Layout Pattern inventory (§16.1 — components realizing tokens Phase 4 stated as system-wide requirements without naming which component applies them), Section 17 names the **reusable wrapper components** that apply Phase 4 §24's and Section 5.8's already-approved motion rules, so that no two components in this system's inventory independently reimplement the identical enter/exit transition, the identical shimmer animation, or the identical reduced-motion fallback logic with potentially inconsistent timing values.
+
+### 17.3 Tier Classification and Closed Inventory
+
+**Closed, Four-Member Set:** Reveal Wrapper, Stagger Container, Transition Wrapper, and Count-Up Wrapper form this system's complete Animation & Motion component inventory. Consistent with §17.2's governing test, none of these four is an independently-motioned component in its own right — each is a thin, narrowly-scoped wrapper applying an already-sanctioned motion behavior to whatever content it composes.
+
+| Component | Tier (§1.6) | Server/Client (§1.7) | Sanctioned Behavior Applied (Phase 4 §24) |
+|---|---|---|---|
+| Reveal Wrapper | Primitive | **Client** — scroll-into-view detection requires client-side observation | Stat/Metric Callout's "count-up on scroll-into-view" trigger condition, generalized as a reusable scroll-visibility detector (§17.4) |
+| Stagger Container | Primitive | **Server** shell / **Client** timing coordination — restating the split-component pattern already established at §1.7, §14.2, §15.2 | No independent sanctioned category of its own; strictly a sequencing wrapper around already-sanctioned per-child transitions (§17.5) |
+| Transition Wrapper | Primitive | **Client** | Toast enter/exit, Modal/Drawer enter/exit, Accordion expand/collapse — the three enter/exit-shaped sanctioned categories, unified behind one shared timing/easing implementation (§17.6) |
+| Count-Up Wrapper | Primitive | **Client** | The count-up-on-scroll-into-view exception, Phase 4 §24, already named at the props level in §15.7's `enableCountUp` field | §17.7 |
+
+**All Four Are Primitive Tier, Never Composite or Higher:** Consistent with §16.2's reasoning for the Layout Pattern inventory, every component in this section's inventory is domain-content-agnostic — a Reveal Wrapper has no awareness of whether the content it reveals is a `Service` or a `TestimonialCard`, consistent with §1.6's One-Directional Composition Rule placing these wrappers structurally beneath the Composite-tier content components they may surround.
+
+### 17.4 Reveal Wrapper Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `children` | `ReactNode` | Required | Composition slot, §2.5 |
+| `trigger` | `'visible' \| 'always'` | Optional, defaults `'visible'` | Design System token union, restating Phase 4 §24's "on scroll-into-view" trigger condition as the default, with `'always'` reserved for the rare case a component needs Reveal Wrapper's fallback-value machinery (§17.4's next rule) without the scroll-observation behavior itself |
+| `fallback` | `ReactNode \| null` | Optional | Composition slot, §2.5 — the content rendered immediately, with no animation, under `prefers-reduced-motion` (§5.8) |
+
+**Reveal Wrapper Is the Generalized Implementation Point for Section 5.8's Already-Established Count-Up Fallback Rule:** Section 5.8's table already specified, for Stat/Metric Callout specifically, that reduced motion produces "Instant display of the final numeric value." Section 17.4 confirms this is achieved by composing the Count-Up Wrapper (§17.7) *inside* a Reveal Wrapper, with the Reveal Wrapper's own `fallback` prop supplying the already-final, non-animated value — Reveal Wrapper itself introduces no numeric-formatting logic (that remains exclusively Count-Up Wrapper's concern, §17.7), only the scroll-visibility detection and reduced-motion branching common to any content that might need a "reveal on scroll" treatment.
+
+**No Content-Type Assumption, Restating §16.2's Domain-Agnostic Principle:** Reveal Wrapper's `children`/`fallback` pair accepts any composed content — its only behavior is *when* and *whether* to apply a scroll-triggered reveal versus an immediate, static render; it carries no opinion about what that content represents, consistent with every Primitive-tier component in this document's inventory.
+
+### 17.5 Stagger Container Component Props Contract
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `children` | `ReactNode` | Required | Composition slot, §2.5 — typically a mapped array of Card instances (§15.4), composed identically to Grid Layout's `children` pattern (§16.5) |
+| `staggerDelayMs` | `number` | Optional, defaults to Phase 4 §24's fixed "150–250ms" micro-interaction timing standard | Design System timing token, Phase 4 §24 — never a freely-supplied arbitrary value; bounded to that same closed timing range |
+
+**Stagger Container Exists Solely to Coordinate Timing Across Multiple Already-Sanctioned Child Transitions — It Is Not Itself a New Sanctioned Category:** Restating §17.2's governing test explicitly against this specific component: a Stagger Container never animates *itself*; it delays the *start time* of each composed child's own already-sanctioned enter transition (e.g., a Grid Layout of Cards each individually using Card's own hover-elevation-adjacent entrance treatment, where one exists) by an incrementing multiple of `staggerDelayMs`. Where no child composed within a Stagger Container carries any sanctioned motion of its own, the Stagger Container has no visible effect at all — it coordinates timing, it does not originate motion.
+
+**Stagger Container's Reduced-Motion Behavior Is Inherited, Never Independently Specified:** Consistent with §5.8's per-component fallback table already governing each individual child's own motion, Stagger Container introduces no separate `prefers-reduced-motion` branch of its own — because it only ever delays already-fallback-aware children (§5.8's existing table entries), disabling the stagger simply means every child's already-established instant-render fallback fires simultaneously rather than sequentially, requiring no additional logic in this component itself.
+
+**Composition Restriction — Stagger Container Composes Only Within a Grid Layout or Split Layout, Never Independently at the Section Level:** Extending §16.8's composition-ownership rules for Layout Pattern components, Stagger Container is always nested *within* a Grid Layout (§16.5) or, less commonly, a Split Layout's slot (§16.6) — it is never composed directly by a Section as a Grid Layout's structural sibling or replacement, since its responsibility (timing coordination of already-arranged children) presupposes an arrangement (column count, gutter spacing) that only Grid Layout or Split Layout already provides.
+
+### 17.6 Transition Wrapper Component Props Contract
+
+**The Shared Implementation Point Unifying Three of Phase 4 §24's Sanctioned Categories:** Toast enter/exit, Modal/Drawer enter/exit, and Accordion expand/collapse (Phase 4 §24's three named enter/exit-shaped micro-interactions) are, per this section's governing test, structurally identical at the animation-mechanics level — a height/opacity/transform transition between a hidden and visible state — differing only in *which* CSS properties transition and *which* component's own Ephemeral UI State (§4.3) drives the `isOpen`/`isExpanded` boolean triggering it.
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `isVisible` | `boolean` | Required | Controlled by the composing component's own Ephemeral UI State (§4.3) — e.g., Modal's `isOpen` (§13.4), FAQ Accordion's per-item expanded state (§4.3's table) |
+| `children` | `ReactNode` | Required | Composition slot, §2.5 |
+| `mode` | `'fade' \| 'slide' \| 'height'` | Required | Design System token union, restating Phase 4 §17–18's Modal-fade/Drawer-slide distinction and Phase 4 §26.8's Accordion height-transition behavior as three closed, named modes — never a freely-composed CSS-transition string |
+| `durationMs` | `number` | Optional, defaults to Phase 4 §24's fixed timing standard | Design System timing token |
+
+**Transition Wrapper Is Composed Internally by Modal, Drawer, Toast, and FAQ Accordion — Never Independently by a Consuming Page or Section:** Consistent with §13.4–13.6's already-established props contracts for Modal, Drawer, and Toast (none of which exposed any motion-related prop of their own), those three components' own implementations compose a Transition Wrapper internally, with their already-specified `isOpen` (§13.4–13.5) or Context-driven visibility state (§13.6) flowing straight through as Transition Wrapper's `isVisible` prop — this is the identical Composite/Compositional-composes-Primitive pattern already governing every other Primitive in this document's inventory (§3.5), now confirmed as applying to motion specifically. A consuming Page or Section never directly instantiates a Transition Wrapper around arbitrary content; doing so would risk exactly the "decorative animation" and "animated page transitions that delay content access" prohibitions Phase 4 §24 already names.
+
+**`mode: 'height'` Is Reserved Exclusively for FAQ Accordion's Documented Behavior:** Restating Phase 4 §26.8's rule that Accordion's expand/collapse uses a "height transition [that] communicates open/closed state" (explicitly, per Phase 4 §24, a sanctioned category *because* it communicates state rather than decorating), `mode: 'height'` is the one Transition Wrapper mode this document confirms has exactly one authorized consumer (§5.4's FAQ Accordion table entry) — a future component composing this mode for unrelated purposes would require the same governance scrutiny §17.2 already establishes for any motion behavior not already named in Phase 4 §24's closed list.
+
+### 17.7 Count-Up Wrapper Component Props Contract
+
+**Direct Completion of §15.7's `enableCountUp` Prop, Given Its Own Dedicated Contract:** Section 15.7 named `enableCountUp: boolean` as Stat/Metric Callout's trigger for "the narrowly-scoped Client-tier count-up island" without specifying that island's own contract — Section 17.7 provides it.
+
+| Prop | Type | Required | Derivation Source (§2.2) |
+|---|---|---|---|
+| `finalValue` | `string` | Required | Content Domain Model, passed straight through from Stat/Metric Callout's own `value` prop (§15.7) — Count-Up Wrapper does not independently parse or reformat this value, restating §15.7's own "never independently parsed or reformatted" rule at this wrapper's level too |
+| `durationMs` | `number` | Optional, defaults to Phase 4 §24's fixed timing standard | Design System timing token |
+
+**Count-Up Wrapper Is Always Composed Within a Reveal Wrapper, Never Independently — the One Fixed Composition Rule in This Section's Inventory:** Because the count-up animation's entire sanctioned justification (Phase 4 §24) is contingent on the "on scroll-into-view" trigger condition, Count-Up Wrapper never appears in this system's component tree except as a child of a Reveal Wrapper (§17.4) — Stat/Metric Callout's own internal composition (§15.7) is therefore Reveal Wrapper composing Count-Up Wrapper composing the final numeric display, with the Reveal Wrapper's `fallback` prop (§17.4) supplying the identical `finalValue` string, unanimated, under `prefers-reduced-motion` — this is the concrete, complete mechanism §5.8's table entry for Stat/Metric Callout ("Instant display of the final numeric value") and §15.7's own reduced-motion cross-reference were both already describing, now fully specified end-to-end.
+
+**Numeric Parsing for the Animation's Own Interpolation Is an Internal Implementation Detail, Never a Props-Level Concern:** Consistent with §4.7's derived-value prohibition and §15.7's identical rule, whatever internal logic Count-Up Wrapper uses to interpolate from zero to `finalValue` (e.g., stripping a `%` suffix for numeric tweening, then reapplying it) is entirely internal to the component's own implementation — it is never exposed as a separate `numericValue`/`suffix`-split props pair, since doing so would push a parsing responsibility onto every consumer that this Primitive's own narrow scope is specifically designed to absorb once, centrally.
+
+### 17.8 Motion Orchestration and Composition Boundaries
+
+**No Motion Component in This Inventory Ever Composes Another Motion Component From This Same Inventory, With One Named Exception:** Consistent with §1.6's One-Directional Composition Rule applied within this section's own closed set, Transition Wrapper never composes a Reveal Wrapper or Count-Up Wrapper, and Reveal Wrapper never composes a Transition Wrapper — each of the four members governs a structurally distinct motion category (enter/exit vs. scroll-reveal vs. sequencing vs. numeric interpolation) and composing across these categories would blur the single-responsibility boundary §1.4 already establishes for every component in this system. **The one named exception, already specified in §17.7, is Count-Up Wrapper's mandatory nesting within Reveal Wrapper** — this is not a violation of the no-cross-composition rule just stated, since Count-Up Wrapper and Reveal Wrapper are not peers governing overlapping concerns; Count-Up Wrapper depends on Reveal Wrapper's visibility-detection mechanism precisely because it has none of its own, making this composition additive rather than duplicative.
+
+**Motion Components Never Appear in the JSON-LD/Structured-Data Path, Restating §11.2's Boundary:** Consistent with §11.2's confirmation that no component in this system's inventory participates in structured-data construction, none of this section's four Motion components carry any props or behavior relevant to Phase 6's discoverability architecture — they are purely presentational-layer concerns, fully orthogonal to the Page-level `generateMetadata`/JSON-LD resolution path already established as entirely separate from the component tree.
+
+**Server-Rendered Content Beneath a Client-Tier Motion Wrapper Remains Fully Present in Initial HTML, Restating §3.4's Serialization Discipline:** Consistent with §3.4's rule that a Client-tier component composing Server-rendered content does not itself force that content to become client-rendered, a Reveal Wrapper or Transition Wrapper's `children` — even though the wrapper itself is Client-tier — retains its own already-established Server/Client classification independent of the wrapper (e.g., a `ServiceCard`, itself Server-tier per §15.2, composed inside a Reveal Wrapper for a scroll-reveal treatment, remains fully present in the page's initial server-rendered HTML; only the *reveal animation itself* is client-executed, never the underlying content's own renderability) — this is the motion-specific restatement of the identical principle already governing every other split-component pattern named across Sections 1.7, 14.2, and 15.2, now confirmed as holding for this section's inventory too.
+
+### 17.9 Accessibility Implications
+
+**Full Inheritance From Section 5.8's Table, No New Fallback Rule Introduced:** Every reduced-motion fallback this section's four components produce is a direct, mechanical implementation of a rule already stated in §5.8's table (Modal/Drawer's instant show/hide, Toast's instant show/hide, Skeleton's static block, Stat/Metric Callout's instant final-value display, Mega Menu/Mobile Drawer's instant expand/collapse) — Section 17 introduces no new component whose reduced-motion behavior is not already named there; it only names the shared implementation mechanism (Reveal Wrapper's `fallback` prop, Transition Wrapper's mode-agnostic instant-toggle behavior under the media query) producing that already-approved output.
+
+**Reveal Wrapper's Scroll-Trigger Never Delays Content From Being Present in the Accessibility Tree:** Consistent with §5.10's Type-Level/Behavioral verification split and §17.8's serialization discipline, content composed within a Reveal Wrapper is present in the DOM and accessibility tree from initial render regardless of its visual reveal-animation state — a screen reader or keyboard-only user encountering a not-yet-visually-revealed element does not experience it as absent or inaccessible; only its *visual* opacity/transform state is scroll-gated, never its presence to assistive technology, directly extending §12.6's "no reliance on visual/layout context" principle (already applied to Sidebar/Content Layout's reading order in §16.9) to this section's scroll-triggered reveal behavior specifically.
+
+**Transition Wrapper's `mode: 'height'` Accordion Usage Inherits FAQ Accordion's Already-Established Focus Retention Rule:** Restating §5.4's "focus retained on toggle" requirement for FAQ Accordion, Transition Wrapper's height-transition mode never moves focus away from the triggering `<button>` element during its animation — this is not a new rule Section 17 introduces, but confirmation that the shared Transition Wrapper implementation does not interfere with an accessibility obligation already assigned to its sole `mode: 'height'` consumer.
+
+### 17.10 Validation Strategy
+
+Consistent with the three-category verification taxonomy established in Section 7.2:
+
+**Type-Level Verification (§7.3):** Confirms Transition Wrapper's `mode` prop admits only the three closed values named in §17.6; confirms Stagger Container's `staggerDelayMs` and Transition Wrapper/Count-Up Wrapper's `durationMs` props, where overridden, remain within Phase 4 §24's bounded timing range rather than accepting an arbitrary numeric value.
+
+**Behavioral Verification (§7.4):** Confirms Count-Up Wrapper never renders independent of a parent Reveal Wrapper (§17.7's fixed composition rule); confirms every one of this section's four components correctly disables its animated behavior and renders the already-established static fallback under `prefers-reduced-motion`, cross-checked against §5.8's table for exact fallback-output parity; confirms Reveal Wrapper's composed content is present in server-rendered HTML output regardless of scroll-visibility state (§17.9).
+
+**Operational Verification (§7.5):** Extends Checklist D with one additional item specific to this section:
+- [ ] Confirm any new component requiring motion composes one of this section's four closed-inventory wrappers (§17.3) around an already-sanctioned Phase 4 §24 behavior, rather than introducing independent animation logic — and confirm the specific motion behavior being wrapped already appears in Phase 4 §24's sanctioned list or Section 5.8's per-component table before authoring the composition
+
+### 17.11 Section Resolution Summary
+
+Section 17 has established the deterministic engineering contracts governing the four-member Animation & Motion inventory, completing this document's sixth closed-category deep-dive following Sections 12 through 16, and confirming this section introduces zero new motion behavior beyond what Phase 4 §24, Phase 6 §13.6, and Section 5.8 already froze:
+
+- Reveal Wrapper, Stagger Container, Transition Wrapper, and Count-Up Wrapper form a closed inventory whose sole purpose is applying already-sanctioned motion behaviors as reusable, thin wrappers — never originating new motion of their own, per the governing test stated at §17.2 (§17.3).
+- Reveal Wrapper generalizes the scroll-into-view trigger condition and reduced-motion fallback branching underlying Stat/Metric Callout's existing behavior, remaining fully content-agnostic (§17.4).
+- Stagger Container coordinates timing across already-motioned children composed within a Grid Layout or Split Layout, introducing no independent motion or reduced-motion logic of its own (§17.5).
+- Transition Wrapper unifies Toast, Modal/Drawer, and Accordion's three enter/exit-shaped sanctioned categories behind one shared, mode-selecting implementation, composed internally by those three components rather than instantiated independently by any consuming Page or Section (§17.6).
+- Count-Up Wrapper completes §15.7's `enableCountUp` contract, mandatorily nested within Reveal Wrapper as the one named cross-composition exception in this section's otherwise strictly-separated inventory (§17.7).
+- Motion components never compose across their own category boundaries beyond that one exception, never participate in the structured-data path, and never alter their composed children's own independently-established Server/Client rendering classification (§17.8).
+- Every reduced-motion fallback this section's components produce is confirmed as a direct implementation of Section 5.8's already-complete table, with scroll-triggered reveal explicitly confirmed never to gate content's presence in the DOM or accessibility tree (§17.9).
+
+Every reusable motion pattern implied but not yet componentized across Sections 1 through 16 is now fully specified down to its individual props-contract level, with zero new animation behavior introduced beyond what Phases 4 and 6 already approved.
+
+**End of Section 17 — Animation & Motion Component Architecture.**
+
+Ready to continue with Section 18.
+
+Phases 1–6 and Phase 7 Sections 1–17 remain frozen and immutable. Continuing with Section 18.
+
+---
+
+# 18. Component Documentation & Storybook Architecture
+
+### 18.1 Purpose and Scope of This Section
+
+Sections 12 through 17 have collectively specified a complete, closed inventory of component contracts across six categories — Form Fields, Feedback/Overlay, Navigation/Wayfinding, Content Display, Layout Pattern, and Animation/Motion — plus the foundational cross-cutting architecture governing every one of them (Sections 1–11). None of these prior sections specified **how this contract knowledge is made discoverable, verifiable, and durable** for engineers implementing against it. Section 18 closes this final gap: it is the documentation-and-verification layer sitting atop every component contract already frozen, ensuring the specifications in Sections 1–17 remain a living, checkable reference rather than a one-time document engineers must manually re-derive from at implementation time.
+
+**Governing Constraint:** Consistent with Section 1.5's Governing Principle 1, this section introduces no new component, no new prop, no new variant, no new token, no new accessibility rule, and no new animation behavior. Every documentation requirement specified below is a **restatement obligation** — a rule requiring that an already-frozen fact from Sections 1–17 (or from Phases 4–6 directly) be surfaced in a specific, discoverable location, never a rule inventing a new fact to surface.
+
+### 18.2 Documentation as a Verification Category — Positioning Within Section 7's Taxonomy
+
+**Restates Section 7.2's Three-Category Verification Taxonomy, Given Documentation's Precise Placement Within It:** Documentation completeness is not a fourth verification category alongside Type-Level, Behavioral, and Operational (§7.2) — it is a **cross-cutting requirement checked within the Operational tier**, consistent with Checklist D's (§7.5) existing pattern of manual, judgment-adjacent review. A component's documentation is "correct" precisely to the extent it accurately restates what Sections 1–17 already established; verifying that restatement's accuracy is therefore an Operational Verification concern (§7.2's third category) applied to a new artifact type (documentation) rather than a new verification mechanism in its own right.
+
+**Why Documentation Nonetheless Warrants Its Own Section Rather Than a Single Checklist Item:** Every prior per-category section (12–17) closed with a single, narrow Checklist D addition (§12.7, §13.8, §14.10, §15.10, §16.10, §17.10) — each confirming conformance to that section's own specific rules. Documentation differs in that its obligation spans **every** component in every category simultaneously, and its own internal structure (what a documentation entry must contain, how it is organized, what tooling renders it) is itself substantial enough to require the full per-category treatment this document has given every other cross-cutting concern (Sections 2 through 11), rather than being adequately captured as one more line in an existing checklist.
+
+### 18.3 Documentation Entry Contract — Required Content Per Component
+
+**Every Component in Every Closed Inventory (§1.2, §12.2, §13.2, §14.2, §15.2, §16.2, §17.3) Carries Exactly One Documentation Entry, Structured Identically:** Consistent with §2.3's naming-convention discipline and §10.6's registry-maintenance governance, a documentation entry is keyed to the component's own name (matching Phase 4 §27's Component Naming Convention exactly) and contains the following closed set of sections — no entry may omit a required section, and no entry may introduce a section beyond this closed set without a formal amendment to this specification:
+
+| Documentation Section | Required Content | Source of Truth |
+|---|---|---|
+| **Purpose** | One-paragraph restatement of the component's single responsibility (§1.4) | The component's own governing subsection in Sections 12–17 |
+| **Tier & Rendering Classification** | Restates the component's tier (§1.6) and Server/Client assignment (§1.7), including split-component notes where applicable | §1.6, §1.7, and the component's own per-category table entry |
+| **Props Table** | Full restatement of every prop's name, type, required/optional status, default value, and derivation source (§2.2) | The component's own props-contract subsection |
+| **Variants** | Every closed-union variant value, restated from its governing Design System token table (§8.3) | Phase 4's per-component variant specification, cross-referenced via §8.3 |
+| **States** | Every interaction state (default/hover/focus/active/disabled/loading, per Phase 4 §11.2's precedent) applicable to this component | Phase 4's per-component state specification |
+| **Accessibility Notes** | Restates the component's semantic element (§5.3), required ARIA attributes (§5.4), keyboard bindings (§5.5), and focus behavior (§5.6) where applicable | Section 5's closed tables, filtered to this component's own rows |
+| **Responsive Behavior** | Restates any breakpoint-dependent rendering change (§8.6), including reduced-motion fallback (§5.8) where applicable | §8.6, §5.8 |
+| **Composition Examples** | Restates the component's permitted composition relationships (§3.5, and the component's own per-category composition subsection) | Section 3, and the relevant §12.6/§13.7/§14.9/§15's variant table/§16.8/§17.8 |
+| **Do/Don't Guidance** | Restates the component's own explicitly-named prohibitions (e.g., §13.4's "no `zIndex` override," §16.4's "no custom pixel-width," §17.6's "never independently instantiated by a consuming Page") | The component's own governing subsection's explicit prohibition language |
+| **Token References** | Enumerates every Phase 4 §28 token this component consumes, per §8.3's "every visual property traces to a named token" rule | §8.3, cross-referenced against the component's own implementation |
+
+**No Documentation Entry May State a Fact Not Already Present in Sections 1–17 or Phases 4–6:** This is the section's single most important governance rule, restating §1.5's Governing Principle 1 at the documentation layer specifically — a documentation entry is a **derived artifact**, exactly as a component's props are a derived projection (§2.2) rather than an independently authored shape. Where a documentation entry appears to require a fact not yet established anywhere in this project, that is evidence of a genuine specification gap requiring resolution in the appropriate earlier phase or section, never a gap a documentation author is authorized to fill in unilaterally.
+
+### 18.4 Storybook Organization Structure
+
+**Folder Structure Mirrors the Six Closed Component-Category Sections, Extending Phase 5A §4's Folder-Structure Convention:** Consistent with Phase 5A §4's `components/` subdivision (`ui/`, `layout/`, `forms/`, `content/`, `feedback/`, `sections/`) and this document's own tier-and-category taxonomy (§1.6, Sections 12–17), the Storybook file hierarchy mirrors that identical structure rather than introducing an independent organizational scheme:
+
+```
+Storybook Root
+├── Primitives (Section 1.6's Primitive tier)
+│   ├── Form Fields (Section 12's six-member inventory)
+│   ├── Layout Patterns (Section 16's five-member inventory)
+│   └── Animation & Motion (Section 17's four-member inventory)
+├── Composites (Section 1.6's Composite tier)
+│   ├── Content Display (Section 15's eight-member inventory)
+│   └── Feedback (Alert, Toast — Section 13's Composite-tier members)
+├── Structural (Section 1.6's Structural tier)
+│   └── Navigation & Wayfinding (Section 14's seven-member inventory,
+│       excluding Search Overlay, which is Composite-tier per §14.2)
+└── Compositional (Section 1.6's Compositional tier)
+    ├── Overlay Systems (Modal, Drawer — Section 13's Compositional-tier
+    │   members)
+    └── Page Sections (Hero, CTA Band — named in Phase 4 §26 and
+        Section 10.4's Page Template registry, not independently
+        given their own Section 12–17 deep-dive since their
+        composition is fully governed by Section 3.5 and Section 10.4)
+```
+
+**This Structure Introduces No New Categorization — It Is a Direct Restatement of §1.6's Tier Model, Cross-Referenced Against Sections 12–17's Category Boundaries:** Where a component's tier (§1.6) and its per-category section (12–17) do not align to a single, obvious folder (e.g., Search Overlay is Composite-tier per §14.2 but belongs conceptually to the Navigation & Wayfinding category), the folder placement follows **tier first, category as a sub-grouping label** — consistent with §1.6 being the more fundamental, earlier-established classification this document has consistently treated as authoritative over any single per-category section's own internal grouping.
+
+**Every Storybook Story Corresponds to Exactly One Component From the Closed Inventories Already Established — No Orphan Stories:** Consistent with §10.5's Orphan/Gap Detection Rule (already established for the Entity-to-Component Registry), Storybook stories are subject to the identical two-directional completeness check: every component named across Sections 12–17's tables must have a corresponding story, and every story present in Storybook must trace to a component named in one of those tables — a story for a component not appearing in any closed inventory is itself a governance violation, not merely a documentation oversight, since it would imply an undocumented eighth-or-later member has been introduced into a category this document has repeatedly declared closed (§12.2, §13.2, §14.2, §15.2, §16.2, §17.3).
+
+### 18.5 Story Requirements Per Component
+
+**Every Component's Story File Contains, at Minimum, the Following Closed Set of Story Variants — No Fewer, No Additional Categories Beyond What This List Permits Extending Via §18.5's Own Final Rule:**
+
+1. **Default Story** — the component rendered with only its required props supplied, all optional props at their documented default (§2.7's "no component ships with implicit, undocumented default behavior" rule made concrete: the Default story is the executable proof that every default is exactly what §18.3's Props Table claims it to be).
+2. **Variant Matrix Story** — every closed-union variant value (§18.3's Variants section) rendered simultaneously, side-by-side, for direct visual comparison — restating Phase 4 §11's Button-variant-table precedent as a general story-authoring rule applied to every variant-bearing component in this system.
+3. **State Story** — every applicable interaction state (§18.3's States section) rendered as a distinct, individually-labeled instance — never relying on a Storybook add-on's simulated-interaction feature alone to demonstrate a state that has its own, independently meaningful visual treatment (e.g., a Button's `disabled` state is its own story entry, not merely a control toggle applied to the Default story, since a reviewer scanning the story list should see every state without needing to manipulate controls first).
+4. **Composition Example Story** — for every Composite/Compositional/Structural-tier component whose §18.3 Composition Examples section names a specific parent-child relationship (e.g., `ServiceCard` composed within a Grid Layout, per §16.5; a Transition Wrapper composed within Modal, per §17.6), a dedicated story demonstrating that exact composition, not merely the component in isolation.
+5. **Accessibility Story (Where Applicable)** — for every component carrying a focus-trap obligation (§5.6), a live-region obligation (§5.7), or a keyboard-interaction table entry (§5.5), a dedicated story configured for direct accessibility-tooling inspection (e.g., a Modal story that opens on mount specifically so focus-trap behavior is immediately testable without requiring a manual trigger-click first).
+
+**No Story Introduces a Prop Value Outside the Component's Own Already-Frozen Type Contract:** Consistent with §7.3's Type-Level Verification and §18.3's "no documentation entry may state a fact not already present" rule, Storybook's own Controls addon (§18.6) is configured to only ever offer prop values already present in that component's own closed-union type — a story author cannot demonstrate a hypothetical seventh Card variant or an out-of-range `staggerDelayMs` value (§17.5), since doing so would document a state the system itself cannot produce.
+
+### 18.6 Controls Configuration Contract
+
+**Storybook Controls Are Auto-Derived From Each Component's TypeScript Props Interface, Never Independently Configured:** Consistent with §7.3's ruling that "TypeScript's compiler is the validation mechanism, not a runtime library," Storybook's Controls panel for every component in this inventory is generated directly from that component's own props type (via the identical type-introspection mechanism already implicit in §7.3's compiler-driven verification philosophy) rather than hand-authored per story — this ensures a Controls panel can never drift from a component's actual type contract, since it is mechanically derived from that contract rather than manually kept in sync with it.
+
+**Controls for Content-Projection Props (§2.2) Are Disabled by Default, Not Left Freely Editable:** Consistent with §2.4's rule that "no component supplies a default-value substitution for missing required data" and the broader anti-fabrication principle restated throughout this document (§10.1, §11.3, §15.7), a Composite-tier component's content-projection props (e.g., `ServiceCard`'s `title`, sourced from `Service.name` per §15.3) are populated in every story with **realistic, representative fixture data** matching that field's own Phase 5B validation bounds (e.g., a `title` fixture respecting Phase 5B §3.1's `3–80 char` bound) — but the Controls panel does not invite free-text editing of these fields in a way that could produce a fixture violating those bounds, since doing so would let a story demonstrate a state the Validation Layer (Phase 5B §5) would never actually permit into production.
+
+**Design-Token-Bound Props (§8.3) Expose Controls Restricted to Their Exact Closed Union:** A `variant` or `size` prop's Storybook control renders as a select/radio control listing only the exact token-union members already established in Phase 4 and restated in this document's own per-component tables — never a free-text input, consistent with §8.3's "never an open `string` type" rule applied here to the documentation-tooling layer specifically.
+
+### 18.7 MDX Documentation Structure
+
+**Every Component's MDX Documentation File Follows the Identical Section Order Established in §18.3's Documentation Entry Contract, With No Reordering Permitted:** Consistent with this document's own internal consistency discipline (every per-category section in this document follows an identical structural pattern — Tier Classification, Props Contract, Composition, Accessibility, Validation, Resolution Summary), every component's MDX file presents its ten required sections (§18.3's table) in the identical fixed order across every component in the system, so that an engineer familiar with any one component's documentation page can navigate any other component's page without needing to relearn its structure.
+
+**MDX Files Embed Live Stories, Never Static Screenshots, for Every Visual Claim:** Consistent with §7.4's Behavioral Verification category ("confirms... at runtime, not merely at the type level"), an MDX documentation page's Variant, State, and Composition sections embed the actual, live-rendered Storybook stories (§18.5) inline rather than a static image — ensuring the documentation cannot silently drift from the component's actual current rendering the way a screenshot could, restating this section's own §18.3 "derived artifact, never independently authored" principle at the media-format level specifically.
+
+**Cross-Reference Footer, Restating Phase 6 §21.9's Documentation-Currency Obligation:** Every MDX file's closing section is a fixed-format cross-reference footer listing the exact Phase 7 subsection(s) that component's contract derives from (e.g., `ServiceCard` → §15.3, §15.4, §11.4, §11.5) — directly extending Phase 6 §21.9's "traceability table currency" obligation (already applied to Phase 6's own report-mapping tables and Phase 6 §9.3's Primary Entity closed set, and restated for Section 10's registry in §10.6) to this section's MDX artifacts specifically, ensuring a future amendment to any cross-referenced subsection has an immediately-discoverable list of every documentation file requiring corresponding review.
+
+### 18.8 Testing Hook Integration
+
+**Storybook Stories Serve as the Canonical Fixture Source for Section 7's Behavioral Verification Tier, Never a Duplicate, Independently-Maintained Test-Fixture Set:** Consistent with §7.4's Behavioral Verification category and this section's own governing principle that documentation is a derived, never independently-authored, artifact, the executable component tests referenced in §7.4 are authored **against the same story definitions** established in §18.5 — a Behavioral Verification test confirming, say, Modal's focus-trap lifecycle (§7.4's own named example) renders the component using its already-defined Accessibility Story (§18.5, item 5) as its test fixture, rather than a separately hand-authored test-only render configuration that could drift from what Storybook itself demonstrates.
+
+**Visual Regression Testing, Where Employed, Snapshots Exclusively Against Story Output — Never Against Ad Hoc, Non-Documented Renders:** Extending §7.6's "cross-section parity as the component layer's most sensitive regression tripwire" reasoning to the documentation-and-testing boundary specifically, any visual-regression-testing mechanism this project's implementation phase eventually adopts is scoped to snapshot exactly the story set already required by §18.5 — since every visually-significant state (Default, Variant Matrix, State, Composition) is already guaranteed present as a story, no additional, undocumented render configuration is needed or permitted purely for visual-regression purposes, consistent with §1.5's Governing Principle 5 (No Duplication Across Component Categories) applied here to test-fixture authorship.
+
+**Accessibility Automated-Scan Integration Targets the Accessibility Story Specifically, Restating §5.10's Build-Time/Manual Split:** Where an automated accessibility-scanning tool (addressing §5.10's "Build-Time/Automatable" category — alt-text presence, `aria-label` presence, heading-sequence conformance) is integrated into the Storybook tooling pipeline, it runs against every story by default but is specifically **required**, not merely permitted, to run against each component's dedicated Accessibility Story (§18.5, item 5), since that story is deliberately configured to expose the exact interaction states (an open Modal, an expanded Accordion) where automated scanning has the greatest diagnostic value.
+
+### 18.9 Governance Rules for Documentation Maintenance
+
+**Documentation Updates Are a Mandatory, Non-Optional Consequence of Any Component Contract Change — Restating and Extending Checklist D's Existing Trigger:** Consistent with §7.5's Checklist D ("New or Modified Component Contract Review") and its identical restatement across every per-category section's own closing checklist item (§12.7, §13.8, §14.10, §15.10, §16.10, §17.10), any event triggering Checklist D **also** triggers a corresponding documentation-entry update (§18.3) and, where the change affects visual rendering, a corresponding story update (§18.5) — this is not a ninth, independently-triggered checklist item but the direct documentation-layer consequence of a trigger this document has already established six times over; Section 18 introduces no new trigger condition, only confirms documentation's place among that trigger's required outputs.
+
+**No Component May Ship (Per §7.6's Continuous Regression-Suite Framing) Without a Complete Documentation Entry — This Is an Operational Verification Gate, Not Merely a Best Practice:** Consistent with §7.2's classification of documentation completeness within the Operational Verification tier, a missing or incomplete documentation entry (any of §18.3's ten required sections absent) is treated with the identical severity Phase 6 §21.7's alert-routing table already assigns to Operational-tier findings — routed to editorial/engineering review, not silently deferred, consistent with this project's consistent refusal (since Phase 5B §5.5) to treat any layer of its own governance as optional.
+
+**Documentation Entries for Deprecated or Superseded Components Are Never Deleted, Only Marked, Restating Phase 5B §3.18.2's Soft-Delete Philosophy:** Consistent with Phase 5B §3.18.2's content-domain soft-delete discipline ("nothing in this system is ever silently overwritten or silently gone") extended here to the documentation layer, a component contract superseded by a future Phase 4/Phase 7 amendment retains its documentation entry, marked as deprecated with a forward-reference to its replacement — never removed outright, preserving the same historical-traceability guarantee Phase 5B §3.18.1's Revision History already establishes for content entities, now applied to component-contract history specifically.
+
+### 18.10 Validation Strategy
+
+Consistent with the three-category verification taxonomy established in Section 7.2, and this section's own placement of documentation within the Operational tier (§18.2):
+
+**Type-Level Verification (§7.3):** Confirms every Storybook Controls configuration (§18.6) is mechanically derived from its component's actual TypeScript props type, with no manually-diverging control definition; confirms no control permits a value outside its governing closed union.
+
+**Behavioral Verification (§7.4):** Confirms every required story category (§18.5's five-item list) is present for every component in every closed inventory (§10.5-style two-directional completeness check, restated here for Storybook specifically); confirms MDX-embedded stories render live and match their component's current implementation rather than a stale, cached snapshot.
+
+**Operational Verification (§7.5):** Extends Checklist D with the documentation-and-story-currency obligation named in §18.9, and adds one further item specific to this section:
+- [ ] Confirm every one of the ten required documentation sections (§18.3) is present and each restates only facts already established elsewhere in Sections 1–17 or Phases 4–6, with no independently-authored claim appearing in any documentation entry
+
+### 18.11 Section Resolution Summary
+
+Section 18 has established the deterministic documentation-and-verification architecture ensuring every component contract specified across Sections 1 through 17 remains discoverable, checkable, and durable as this project moves toward implementation:
+
+- Documentation completeness is positioned as an Operational Verification concern within Section 7's existing three-category taxonomy, not a fourth, independent verification mechanism (§18.2).
+- Every component carries exactly one documentation entry containing ten required, fixed-order sections, each a restatement of an already-frozen fact from Sections 1–17 or Phases 4–6, never an independently-authored claim (§18.3).
+- Storybook's folder organization mirrors this document's own tier-and-category taxonomy exactly, with a two-directional orphan/gap check extending Section 10.5's existing completeness discipline to the story layer (§18.4).
+- Five required story categories — Default, Variant Matrix, State, Composition Example, and (where applicable) Accessibility — govern every component, with no story permitted to demonstrate a prop value outside the component's own closed type contract (§18.5).
+- Storybook Controls are mechanically derived from each component's TypeScript props interface, with content-projection props populated by bounds-respecting fixture data rather than freely-editable fields (§18.6).
+- MDX documentation follows a fixed section order across every component, embeds live stories rather than static screenshots, and closes with a cross-reference footer extending Phase 6 §21.9's documentation-currency obligation (§18.7).
+- Behavioral Verification tests and any future visual-regression or accessibility-scanning tooling are authored exclusively against the story fixtures already required by §18.5, never a separately-maintained, independently-drifting test-fixture set (§18.8).
+- Documentation updates are a mandatory, non-optional consequence of any Checklist-D-triggering event, missing documentation is an Operational Verification gate rather than an optional best practice, and deprecated component documentation is marked, never deleted, restating Phase 5B §3.18.2's soft-delete philosophy at the documentation layer (§18.9).
+
+Every component contract established across Sections 1 through 17 of Phase 7 is now bound by a complete, closed documentation-and-verification architecture, introducing no new component, prop, variant, token, or behavior of any kind — only the discoverability layer ensuring everything already frozen remains correctly and durably known.
+
+**End of Section 18 — Component Documentation & Storybook Architecture.**
+
+Ready to continue with Section 19.
+
+Phases 1–6 and Phase 7 Sections 1–18 remain frozen and immutable. Continuing with Section 19.
+
+---
+
+# 19. Component Testing Architecture
+
+### 19.1 Purpose and Scope of This Section
+
+Section 7 established a three-category verification taxonomy (Type-Level, Behavioral, Operational) and assigned "executable component tests, run at CI time" as Behavioral Verification's governing mechanism (§7.2), without specifying that mechanism's internal structure. Section 18 further established that these executable tests are authored against Storybook's story definitions rather than a separately-maintained fixture set (§18.8) and positioned documentation completeness within the Operational tier (§18.2). Neither section specified **how Behavioral Verification itself is organized into distinct testing layers**, what each layer's boundary of responsibility is relative to the others, how test fixtures and mocks are sourced without duplicating data already governed elsewhere in this project, or what coverage completeness means against this system's closed component inventories. Section 19 closes this final gap in Phase 7's verification architecture.
+
+**Governing Constraint:** Consistent with Section 1.5's Governing Principle 1 and the identical constraint restated at the opening of every per-category and cross-cutting section since Section 12, this section introduces no new component, prop, variant, token, state, accessibility behavior, rendering strategy, or business rule. Every testing layer, fixture rule, and governance mechanism specified below exists solely to **verify** that a component's actual runtime behavior matches a contract already frozen in Sections 1–18 — never to define new behavior a test might then be written to enforce.
+
+### 19.2 Testing Layers Within Behavioral Verification
+
+**Restates §7.2's Behavioral Verification Category, Given Its Internal Subdivision:** Section 7.2 defined Behavioral Verification as confirming "composition boundaries (§3), state transitions (§4), accessibility interaction contracts (§5.4–5.7), loading/error lifecycle selection (§6.6)" via "executable component tests." Section 19.2 does not introduce a fourth top-level verification category alongside Type-Level, Behavioral, and Operational (§7.2's closed set remains exactly three) — it subdivides Behavioral Verification into four **testing layers**, each targeting a distinct scope of the composition chain already established in Section 3, consistent with this document's repeated practice of subdividing an already-closed category rather than expanding the category itself (exactly as §12.2 subdivided the Primitive tier into six named field members without adding a seventh tier).
+
+| Testing Layer | Scope | Governing Prior Section |
+|---|---|---|
+| **Unit** | A single component in isolation, verified against its own props contract | §2 (Props), §12.2's field-primitive precedent |
+| **Integration** | A composed subtree spanning two or more tiers, verified against Section 3's composition rules | §3 (Composition Architecture) |
+| **Interaction** | A component's response to simulated user input, verified against Section 4's state machine and Section 5's keyboard/focus contracts | §4 (State Management), §5.5–5.6 (Keyboard/Focus) |
+| **Accessibility** | A component's conformance to Section 5's derived accessibility contracts, verified via automated scanning and manual review | §5 (Accessibility Implementation Architecture), §18.8 |
+
+**No Testing Layer Exists Independent of the Story Fixtures Already Required by Section 18.5:** Consistent with §18.8's "canonical fixture source" rule, every test authored within any of these four layers renders its subject component using the identical story definitions Section 18.5 already mandates (Default, Variant Matrix, State, Composition Example, Accessibility) — a testing layer's distinguishing property is *what it asserts* about a given story's rendered output, never *what it renders*, since the rendering input is already fixed and singular per §18.8's governing rule.
+
+### 19.3 Unit Testing Boundary
+
+**Restates §7.3's Type-Level Verification, Given Its Explicit Non-Overlap With Unit Testing's Scope:** Section 7.3 already established that "type-level verification requires no test authorship at all for the overwhelming majority of contract properties" — props shape, required/optional correctness, and discriminated-union exhaustiveness are compiler-verified, never unit-tested. Section 19.3 confirms the corollary: **unit tests never re-verify what the compiler already guarantees.** A unit test asserting that a `ServiceCard` "accepts a `title` prop of type `string`" is redundant with, and therefore prohibited alongside, §7.3's compiler-level check — unit testing exists exclusively for behavior the type system cannot express.
+
+**Unit Test Scope, Precisely Bounded:** A unit test for a given component verifies exactly three categories of runtime behavior, each corresponding to a rule already established elsewhere that the type system alone cannot enforce:
+
+1. **Derived-value correctness** (§4.7, §12.4, §15.7) — e.g., that a field primitive's `aria-invalid` attribute is `"true"` if and only if its `errorText` prop is non-`null` (§12.5), a runtime conditional the compiler cannot verify since both are independently-typed props that happen to be governed by a derivation rule stated in prose, not in the type system itself.
+2. **Default-value application** (§2.7) — e.g., that `Container` renders at `size="xl"`'s token width when no `size` prop is supplied (§16.4), verifying the documented default (§18.3's Props Table obligation) is genuinely what the implementation applies, not merely what the documentation claims.
+3. **Conditional rendering branches** (§13.3's `onDismiss`-conditional-on-`isDismissible`, §15.6's `onToggle`-presence-determines-interactivity) — confirming a component's single-source-of-derivation rules (§12.4's precedent, restated across §13.3 and §15.6) hold at runtime, not merely at the type-union level already covered by §7.3.
+
+**Unit Tests Never Span a Composition Boundary:** Consistent with §3.2's tier definitions, a unit test renders its subject component with directly-supplied props (matching exactly what §18.6's Controls configuration already fixtures) — it never composes that component within a parent Section or Page to observe cross-tier behavior, since that scope belongs exclusively to Integration testing (§19.4). A `ServiceCard` unit test confirms the card's own rendering given a `Service` projection; it does not render a Grid Layout containing multiple `ServiceCard` instances to confirm grid arrangement, which is Grid Layout's own concern (§16.5) tested at its own unit-testing scope, or an Integration-layer concern where the two are tested together (§19.4).
+
+### 19.4 Integration Testing Boundary
+
+**Restates §7.4's Composition-Boundary Behavioral Tests, Given Their Full Layer Specification:** Section 7.4 named three composition-boundary properties requiring behavioral confirmation: that a Server-tier Section composing a Client-tier island does not itself require client-side JavaScript (§3.4); that data narrowing at each composition boundary produces correct minimum-sufficient-slice props (§3.3); and that composition depth does not exceed the four-tier ceiling in practice (§3.7). Section 19.4 assigns these three properties to the Integration testing layer specifically, and adds the two composition-specific verification obligations named across the per-category sections but not yet assigned a testing-layer home:
+
+1. **Sibling-Consumer Data Parity** (§11.2–11.3, §11.6) — confirming that where a component and the Page-level JSON-LD/breadcrumb resolution path are established as "sibling consumers of shared upstream data" (§11.2's pattern), the component's rendered output and the separately-resolved structured-data artifact agree on every shared fact (e.g., a `BreadcrumbList` node and the visible `Breadcrumb` component render the identical trail, restating §11.3's "single computation, multiple renderings" guarantee as an Integration-layer assertion rather than a purely structural one).
+2. **Cross-Tier Prop-Narrowing Fidelity** (§3.3's recursive narrowing rule) — confirming that a Section passing data into a composed Composite genuinely supplies only the minimum-sufficient-slice §2.2 requires, never an unnarrowed superset, verified by asserting the composed child receives no prop the Section's own contract did not explicitly narrow toward.
+
+**Integration Tests Are Scoped to Exactly One Composition Boundary at a Time, Never the Full Page Tree:** Consistent with §3.7's composition-depth governance ("no component composition in this system exceeds this four-level depth under normal operation"), an Integration test verifies one Section-composes-Composite, or one Composite-composes-Primitive, relationship at a time (e.g., the specific "CTA Band composing two Instrumented Action Wrapper instances" pattern named in §9.5) — never the entire Page → Section → Composite → Primitive chain in a single test, which would conflate this layer's scope with what §19.11 assigns to CI-gate-level, whole-build verification instead.
+
+**Server/Client Boundary Verification Is an Integration-Layer, Not Unit-Layer, Concern:** Restating §7.4's own example ("that a Server-tier Section composing a Client-tier island... does not itself require client-side JavaScript to render its static content"), confirming this property requires rendering the composed pair together — a unit test of the Section alone or the island alone cannot observe the boundary itself, which is precisely why this verification belongs at the Integration layer.
+
+### 19.5 Interaction Testing Boundary
+
+**Restates §7.4's State-Transition and Accessibility-Interaction Behavioral Tests, Given Their Full Layer Specification:** Section 7.4 named the Form State three-phase lifecycle (§4.4), the Ephemeral-UI-State non-leakage rule (§4.3), the keyboard-interaction table (§5.5), and the focus-management lifecycle (§5.6) as requiring runtime confirmation "under simulated interaction." Section 19.5 assigns these to the Interaction testing layer, distinguished from Integration testing (§19.4) by its focus on **temporal sequences of simulated user input** rather than static composition-tree structure.
+
+**Interaction Test Scope, Enumerated Against Already-Closed Tables:**
+
+1. **Form State Lifecycle Transitions** (§4.4) — simulating field input, submission, and each `ActionResult` branch (`ok: true`, `VALIDATION_ERROR`, `RATE_LIMITED`, `UNKNOWN_ERROR`, Phase 5B §7.5) in sequence, confirming the Form component's rendering correctly reflects each phase without an intermediate, uncovered state (§6.6's Pending/Rejected/Resolved framing, restated at the Form-specific granularity §4.4 already established).
+2. **Keyboard-to-Action Mapping** (§5.5's closed table) — simulating each named key (`Escape`, `Tab`/`Shift+Tab`, `Enter`/`Space`, `ArrowDown`/`ArrowUp`, `ArrowLeft`/`ArrowRight`) against its specific governing component and confirming the exact action §5.5's table specifies, with **no key binding outside that table ever asserted**, restating §5.5's own closing rule ("no component introduces a custom key binding outside this table") as a testing-layer prohibition against writing a test for a keyboard behavior the contract does not authorize.
+3. **Focus-Trap Three-Phase Lifecycle** (§5.6) — simulating trap entry, Tab-cycling containment, and trap exit with restoration, for exactly the three components §5.6 names (Modal, Drawer, Search Overlay), and separately confirming Mega Menu's explicit non-trapping behavior as a **negative** assertion (§5.6's stated exclusion, verified by confirming focus is *not* contained, exactly as important a test as confirming containment where it is required).
+4. **Ephemeral UI State Non-Leakage** (§4.3) — confirming that interacting with a component's internal state (e.g., expanding one FAQ Accordion item) produces no observable change in any sibling or parent component's own rendering, verifying §4.3's "never reported upward" rule as a negative assertion.
+
+**Interaction Tests Never Assert Against `trackEvent()`'s Actual Network/Analytics-Vendor Behavior:** Consistent with §19.9's mock-strategy rule (below) and Phase 5B §8.5's "fire-and-forget" characterization, an Interaction test confirming the Instrumented Action Wrapper (§9.2) fires correctly asserts that `trackEvent()` **was called** with the correct `AnalyticsEvent` payload shape (§9.4) — it never asserts that GA4 or Clarity actually received or processed that call, since that would cross into third-party-boundary territory Phase 5B §8.7 already establishes as a separately-governed, non-blocking concern outside this component-testing architecture's authority.
+
+### 19.6 Accessibility Testing Strategy
+
+**Restates §5.10's Build-Time/Manual Split and §18.8's Automated-Scan Integration, Given Their Full Testing-Layer Specification:** Section 5.10 already divided accessibility verification into "Build-Time/Automatable" (alt-text presence, `aria-label` presence, heading-sequence conformance, single-`<main>` structural lint) and "Manual/Judgment-Based" (color-contrast against finalized tokens, genuine screen-reader walkthroughs, reduced-motion fallback quality) categories. Section 19.6 confirms the Accessibility testing layer (§19.2's table) is exclusively the **automated** half of that split — the manual half remains, unmodified, within Operational Verification's checklist-driven review (§7.5, §18.9), never absorbed into this section's executable-test scope.
+
+**Automated Accessibility Testing Runs Against Every Story, With the Dedicated Accessibility Story as Its Required Minimum:** Restating §18.8's rule verbatim in its testing-architecture consequence, automated accessibility scanning executes against the full story set §18.5 requires (Default, Variant Matrix, State, Composition Example) for defense-in-depth, but is **specifically required**, not merely permitted, to run against each component's dedicated Accessibility Story — since that story is deliberately configured (§18.5, item 5) to expose interaction states (an open Modal, an expanded Accordion) where a static, unexpanded Default story would miss a live-region or focus-trap defect entirely.
+
+**Accessibility Testing Never Substitutes for the Manual Verification Category — This Boundary Is a Governance Rule, Not a Technical Limitation Alone:** Consistent with §5.10's own honest framing ("ultimately requiring human verification of the experience, not merely the markup's presence"), a passing automated-accessibility-test suite is never treated, anywhere in this project's governance, as sufficient sign-off for Checklist D's manual-review items (§7.5) — this restates, rather than weakens, the severity distinction already established in Phase 6 §21.7's alert-routing table between automatable and judgment-based findings.
+
+### 19.7 Visual Regression Testing Strategy
+
+**Restates §18.8's Visual-Regression Scoping Rule, Given Its Full Testing-Architecture Placement:** Section 18.8 already established that "any visual-regression-testing mechanism this project's implementation phase eventually adopts is scoped to snapshot exactly the story set already required by §18.5" — Section 19.7 confirms visual regression testing sits **outside** the four-layer taxonomy of §19.2 (Unit/Integration/Interaction/Accessibility), since it verifies a categorically different property: not *whether* a component's behavior matches its contract, but *whether* its rendered pixel output has changed at all since a prior, approved baseline — a concern orthogonal to contract conformance and therefore not itself one of Behavioral Verification's four sub-layers, but a separate, parallel check operating on the identical story fixtures.
+
+**Visual Regression Baselines Are Approved Exclusively Through the Same Operational Verification Process Governing Checklist D:** Consistent with §7.5's shared-ownership model ("not a single role's unilateral sign-off") and Phase 6 §21.9's documentation-governance precedent, a visual-regression baseline update (confirming an intentional rendering change rather than flagging a regression) is itself subject to the identical Checklist D review already required for any component-contract modification (§7.5) — a baseline is never silently re-approved by the same automated pipeline that flagged the difference, preserving the human-judgment checkpoint this entire verification architecture has consistently required at every layer touching genuine visual or experiential change.
+
+**Visual Regression Testing Is Bounded to Components, Never Whole-Page Composition:** Consistent with §19.4's Integration-layer scoping rule ("never the full page tree"), visual regression snapshots are captured per-story (i.e., per-component, per-variant), never as full-page screenshots spanning the entire Page → Section → Composite → Primitive chain — full-page visual verification, where genuinely needed, is a Phase 9/DevOps-adjacent deployment-verification concern (extending the precedent already set by Phase 6 §19.7's "Gate 8" deployment-time checks), outside this section's component-scoped authority.
+
+### 19.8 Fixture Management
+
+**Restates §18.6's Content-Projection-Prop Fixture Rule, Given Its Full Test-Data Governance:** Section 18.6 already established that Storybook fixtures for content-projection props are "realistic, representative fixture data matching that field's own Phase 5B validation bounds" — Section 19.8 confirms this is the **sole** source of fixture data for every testing layer in §19.2; no testing layer maintains its own, independently-authored fixture set.
+
+**Fixture Data Is Versioned Alongside the Component Contract It Serves, Never Alongside the Test File in Isolation:** Consistent with §10.6's registry-maintenance governance (fixture/contract pairing updates triggered by the same event) and §18.9's mandatory documentation-update trigger, a fixture's validity is a direct function of the Phase 5B validation bounds it must respect — where those bounds change (a Phase 5B amendment, per Phase 6 §21.9's governance process), every fixture respecting the old bounds is treated as immediately stale across every testing layer simultaneously, never patched independently per test file.
+
+**Fixtures Never Encode a State the Validation Layer Would Reject:** Restating §18.6's anti-fabrication-adjacent rule ("could produce a fixture violating those bounds") as a testing-specific prohibition, no unit, integration, or interaction test is ever authored against a fixture representing an impossible domain state (e.g., a `Service` fixture with a `name` field violating Phase 5B §3.1's `3–80 char` bound, or a `CaseStudy` fixture with `clientAuthorizationConfirmed: false` paired with `status: PUBLISHED`, a combination Phase 5B §5.3's validation gate already structurally prevents from existing) — testing an impossible state provides no genuine verification value and risks masking a real contract gap behind a fixture that could never occur in production.
+
+### 19.9 Mock Strategy
+
+**Boundary-Module Mocking, Direct Extension of Phase 5B §8.1's Single-Call-Site Discipline:** Consistent with Phase 5B §8.1's rule that every external integration is confined to exactly one boundary module, and §9.4's confirmation that components never call `trackEvent()` except through the single Instrumented Action Wrapper pattern, every testing layer in this section mocks **at the boundary-module level, never at the individual-component level** — a test verifying the Instrumented Action Wrapper's behavior (§19.5) mocks the single `trackEvent()` boundary-module function itself (Phase 5B §8.5), never a component-internal implementation detail, ensuring the mock's surface area matches exactly the single, already-governed integration seam this document has consistently identified.
+
+**Server Action Mocking Restates §4.4's `ActionResult` Union as the Mock's Return-Type Contract:** Consistent with §4.4's rule that a Form component's Phase 3 rendering is "a direct rendering of the already-validated `ActionResult` union," any test simulating a Server Action's response (§19.5's Form State Lifecycle testing) mocks the Server Action's return value as one of the four already-closed `ActionResult` branches (Phase 5B §7.5) — never a fifth, test-only response shape invented for convenience, restating §7.3's exhaustiveness-checking discipline as a mock-construction constraint specifically.
+
+**The Toast Context Is Mocked as a Whole, Never Partially Stubbed:** Consistent with §4.8's three governance rules bounding the single authorized Context's usage, a test requiring Toast-triggering behavior (e.g., confirming a Newsletter-signup Form's success branch enqueues a toast, §13.6) mocks the entire Context provider's enqueue function as one unit — never mocking only a portion of the Context's exposed interface, since §4.8 Rule 2 already restricts that interface to exactly "an 'enqueue toast' function and the current queue," leaving no partial-mocking surface to begin with.
+
+**CMS/Repository-Layer Data Is Never Mocked at the Component-Testing Layer — It Is Already Resolved Fixture Data:** Restating §3.3's single-fetch principle and §19.8's fixture-sourcing rule, no component test in this architecture mocks a Repository (Phase 5B §6.1) or Content Service (Phase 5B §6.2) call, because — consistent with §1.4's "components consume; they do not fetch" principle — no component under test ever performs such a call in the first place; the already-resolved fixture data (§19.8) stands in directly for what a real Content Service call would have already produced by the time any component receives its props, making Repository-layer mocking a Phase 5B-scoped concern entirely outside this component-testing architecture's boundary.
+
+### 19.10 Coverage Philosophy
+
+**Coverage Is Measured Against the Closed Inventories Established in Sections 12–17, Never Against an Abstract Line/Branch Percentage Target:** Consistent with this document's repeated closed-set discipline (§1.6, §1.8, §12.2, §13.2, §14.2, §15.2, §16.2, §17.3) and §18.4's two-directional orphan/gap check, testing completeness is defined as: **every component named in every closed inventory has at minimum one test at each applicable testing layer (§19.2), and no test exists for a component, prop value, or interaction pattern not already named in Sections 1–18.** This is a deliberately different completeness metric from a generic statement-coverage percentage, which this architecture does not adopt as its primary target, consistent with Phase 6 §21.1's own precedent of preferring deterministic, enumerable completeness checks over statistical or threshold-based ones wherever an enumerable alternative exists.
+
+**"Applicable" Testing Layers Vary by Component, Restating the Split-Component Precedent:** Not every component requires all four testing layers (§19.2) — a Server-tier, non-interactive component (e.g., Breadcrumb, §14.6) has no Interaction-layer obligation, since it accepts no user input and triggers no state transition; its coverage obligation is fully satisfied by Unit and Integration layers alone. This mirrors the same split-component reasoning already applied throughout this document (§1.7, §14.2, §15.2, §17.3) — a component's testing-layer obligations are exactly as broad as its own actual behavioral surface, never padded with layers that would test nothing genuine.
+
+**Coverage Gaps Are Flagged Through the Identical Orphan/Gap Mechanism Already Established for Entities (§10.5) and Stories (§18.4):** A component present in a closed inventory (Sections 12–17) but absent from the corresponding test suite is a governance violation of the same class and severity as an entity with no rendering component (§10.5) or a component with no Storybook story (§18.4) — Section 19.10 introduces no new detection mechanism, only extends the existing two-directional completeness check to this third artifact type (tests), consistent with this document's practice of applying one proven governance pattern repeatedly rather than inventing a parallel one per artifact category.
+
+### 19.11 Testing Governance
+
+**Test Execution Is Positioned Within Phase 6 §21.4's Existing CI/CD Gate Sequence, Not a New, Independent Pipeline:** Consistent with §7.6's framing of Sections 7.3–7.4 as "a continuously-enforced regression suite... run on every build and every code change," and Phase 6 §21.4's already-established eight-gate CI/CD sequence, the four testing layers specified in this section (§19.2) execute within **Gate 4 (Entity & Trust Consistency)**'s adjacent scope or, more precisely, as a parallel, component-layer analog to Phase 6 §21.2's Layer 3 — Section 19 does not insert a new numbered Gate into Phase 6 §21.4's sequence (that sequence remains frozen, per this project's governance model), but confirms this section's tests execute at the identical build-time checkpoint already established for every other Type-Level and Behavioral check this document has specified since Section 7.
+
+**Test Failures Follow Phase 6 §21.7's Existing Alert-Routing Table Without Modification:** A failing Unit, Integration, or Interaction test is routed identically to any other Gate 1–4 build-time failure (Phase 6 §21.7's table — "Build-pipeline failure notification to engineering... Blocking — deploy cannot proceed"); a failing Accessibility-layer automated scan is routed identically to Phase 6 §21.7's warning-tier build checks where the finding is genuinely judgment-adjacent, or as a blocking failure where it corresponds to one of §5.10's named Build-Time/Automatable checks — Section 19.11 introduces no new alert category, only confirms this section's four testing layers map onto categories that routing table already fully covers.
+
+**No Test May Be Skipped, Disabled, or Marked "Known-Failing" Without a Corresponding, Documented Amendment — Restating Phase 6 §21.9's Amendment Discipline:** Consistent with the "frozen section" governance model this entire project has operated under since Phase 1, and Phase 6 §21.9's rule that any system change invalidating a documented claim requires "a documented amendment... not merely a code change with no corresponding update," a test suppressed or disabled without such an amendment is treated as a silent regression of exactly the kind Phase 6 §21.6 and §7.6 both name as this architecture's central risk — test suppression is never a routine engineering decision within this governance model; it is itself a governance event requiring the same review discipline as any other contract change.
+
+### 19.12 Validation Strategy
+
+Consistent with the three-category verification taxonomy established in Section 7.2, applied here reflexively — to the testing architecture's own conformance, not merely to the components it tests:
+
+**Type-Level Verification (§7.3):** Confirms every mock (§19.9) is typed against the exact already-frozen interface it stands in for (`ActionResult`, `AnalyticsEvent`, the Toast Context's enqueue-function signature) — a mock whose shape diverges from its real counterpart's type is a compilation failure, never a runtime-discovered drift.
+
+**Behavioral Verification (§7.4):** Confirms every closed-inventory component (Sections 12–17) has at least one test at each of its applicable testing layers (§19.10's coverage philosophy); confirms Interaction-layer tests never assert a keyboard binding outside §5.5's table; confirms visual regression baselines are never silently re-approved without the Operational review §19.7 requires.
+
+**Operational Verification (§7.5):** Extends Checklist D with one final item specific to this section:
+- [ ] Confirm any new or modified component's test suite is authored exclusively against its Storybook story fixtures (§18.8, §19.2), sources all content-projection fixture data from Phase-5B-bounds-respecting values (§19.8), mocks only at the already-established boundary-module seams (§19.9), and introduces no test for a state, prop value, or interaction pattern absent from Sections 1–18
+
+### 19.13 Section Resolution Summary
+
+Section 19 has established the deterministic testing architecture completing Section 7's three-category verification taxonomy and Section 18's documentation architecture, closing the final gap in Phase 7's specification:
+
+- Behavioral Verification is subdivided into four testing layers — Unit, Integration, Interaction, and Accessibility — each targeting a distinct scope of the composition chain already established in Section 3, without expanding Section 7.2's closed three-category taxonomy (§19.2).
+- Unit tests verify only what the compiler cannot express — derived-value correctness, default-value application, and single-source-of-derivation conditional rendering — never duplicating Type-Level Verification's already-complete coverage, and never spanning a composition boundary (§19.3).
+- Integration tests verify composition-boundary properties (Server/Client rendering independence, prop-narrowing fidelity, sibling-consumer data parity) at exactly one boundary per test, never the full Page-to-Primitive chain (§19.4).
+- Interaction tests verify Form State's three-phase lifecycle, the closed keyboard-to-action table, the three-phase focus-trap lifecycle (including Mega Menu's negative exclusion), and Ephemeral UI State's non-leakage rule, while never asserting against third-party analytics-vendor behavior beyond confirming the boundary-module call itself (§19.5).
+- Accessibility testing is confirmed as the automated half of §5.10's existing split, required at minimum against each component's dedicated Accessibility Story, and never substituting for the manual-review category it does not replace (§19.6).
+- Visual regression testing sits outside the four-layer taxonomy as a parallel, pixel-level check, scoped per-component rather than per-page, with baseline approval always routed through Operational Verification's human-review checkpoint (§19.7).
+- Fixture data is sourced exclusively from Phase-5B-bounds-respecting values already required for Storybook (§18.6), versioned alongside the contracts they serve, and never encodes a domain state the Validation Layer would reject (§19.8).
+- Mocking occurs exclusively at already-established boundary-module seams (`trackEvent()`, the `ActionResult` union, the Toast Context), with Repository/Content-Service data never mocked at this layer since components never fetch it directly (§19.9).
+- Coverage completeness is defined against the closed component inventories via the same two-directional orphan/gap mechanism already governing entities (§10.5) and stories (§18.4), with testing-layer applicability varying honestly by each component's actual behavioral surface (§19.10).
+- Test execution occurs within Phase 6 §21.4's existing CI/CD gate sequence and Phase 6 §21.7's existing alert-routing table without modification, and test suppression is governed with the same amendment discipline required for any other frozen-section change (§19.11).
+
+Every component contract established across Sections 1 through 18 of Phase 7 is now bound by a complete, closed testing architecture, introducing no new component, prop, variant, token, state, accessibility behavior, rendering strategy, or business rule — only the verification layer confirming everything already frozen behaves exactly as specified.
+
+**End of Section 19 — Component Testing Architecture.**
+
+Ready to continue with Section 20.
+
