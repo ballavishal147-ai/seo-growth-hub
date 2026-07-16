@@ -1,0 +1,76 @@
+/**
+ * PHASE 4 — DESIGN SYSTEM TOKEN BRIDGE (PLACEHOLDER)
+ * ---------------------------------------------------
+ * These values are NOT sourced from your real Phase 4 doc, which I
+ * don't have access to yet. They exist so the rest of the codebase
+ * (Tailwind config, shadcn/ui components, theme provider) has a
+ * single, correct place to plug in the real token values later.
+ *
+ * When you provide the Phase 4 spec, only this file — and the font
+ * variables wired in layout.tsx — should need to change.
+ *
+ * Format: HSL triplets without hsl(), so Tailwind can wrap them as
+ * hsl(var(--token) / <alpha-value>) when needed.
+ */
+
+:root {
+  --background: 0 0% 100%;
+  --foreground: 224 15% 12%;
+
+  --card: 0 0% 100%;
+  --card-foreground: 224 15% 12%;
+
+  --popover: 0 0% 100%;
+  --popover-foreground: 224 15% 12%;
+
+  --primary: 221 83% 53%;
+  --primary-foreground: 0 0% 100%;
+
+  --secondary: 220 14% 96%;
+  --secondary-foreground: 224 15% 12%;
+
+  --muted: 220 14% 96%;
+  --muted-foreground: 220 9% 46%;
+
+  --accent: 221 83% 96%;
+  --accent-foreground: 221 83% 30%;
+
+  --destructive: 0 72% 51%;
+  --destructive-foreground: 0 0% 100%;
+
+  --border: 220 13% 91%;
+  --input: 220 13% 91%;
+  --ring: 221 83% 53%;
+
+  --radius: 0.625rem;
+}
+
+.dark {
+  --background: 224 20% 8%;
+  --foreground: 220 14% 96%;
+
+  --card: 224 18% 11%;
+  --card-foreground: 220 14% 96%;
+
+  --popover: 224 18% 11%;
+  --popover-foreground: 220 14% 96%;
+
+  --primary: 221 83% 63%;
+  --primary-foreground: 224 20% 8%;
+
+  --secondary: 224 15% 16%;
+  --secondary-foreground: 220 14% 96%;
+
+  --muted: 224 15% 16%;
+  --muted-foreground: 220 9% 65%;
+
+  --accent: 221 40% 20%;
+  --accent-foreground: 221 83% 85%;
+
+  --destructive: 0 62% 45%;
+  --destructive-foreground: 220 14% 96%;
+
+  --border: 224 15% 18%;
+  --input: 224 15% 18%;
+  --ring: 221 83% 63%;
+}
